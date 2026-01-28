@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "448115347826",
+    "project_id": "jpay-17",
+    "storage_bucket": "jpay-17.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:448115347826:android:0a5094fb8f8dd9ec670deb",
+        "android_client_info": {
+          "package_name": "com.example.jpay"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3v-x7EErwvW4Ti-sMoenNt0ypdZ2ceOI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

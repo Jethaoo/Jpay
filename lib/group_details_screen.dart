@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'debt_calculations.dart';
 
 class GroupDetailsScreen extends StatelessWidget {
   final String groupId;
@@ -15,12 +16,14 @@ class GroupDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 1. OUTER STREAM: Listens to the Group Document (to get Members)
-    // We wrap the SCAFFOLD in this stream so the FloatingActionButton 
+    // We wrap the SCAFFOLD in this stream so the FloatingActionButton
     // can access the 'members' list too.
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('groups').doc(groupId).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupId)
+          .snapshots(),
       builder: (context, groupSnapshot) {
-        
         // Loading State
         if (groupSnapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(
@@ -36,7 +39,7 @@ class GroupDetailsScreen extends StatelessWidget {
 
         // Error or Deleted State
         if (!groupSnapshot.hasData || !groupSnapshot.data!.exists) {
-           return Scaffold(
+          return Scaffold(
             appBar: AppBar(
               title: Text(
                 groupName,
@@ -54,7 +57,7 @@ class GroupDetailsScreen extends StatelessWidget {
 
         // 2. DATA EXTRACTION
         final groupData = groupSnapshot.data!.data() as Map<String, dynamic>;
-        final List<dynamic> friends = groupData['friends'] ?? []; 
+        final List<dynamic> friends = groupData['friends'] ?? [];
 
         return Scaffold(
           appBar: AppBar(
@@ -67,7 +70,7 @@ class GroupDetailsScreen extends StatelessWidget {
             ),
             elevation: 0,
           ),
-          
+
           // 3. BODY: Balances Summary + Expenses List
           body: Column(
             children: [
@@ -78,10 +81,7 @@ class GroupDetailsScreen extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Colors.indigo.shade50,
-                      Colors.indigo.shade100,
-                    ],
+                    colors: [Colors.indigo.shade50, Colors.indigo.shade100],
                   ),
                 ),
                 child: Column(
@@ -89,8 +89,12 @@ class GroupDetailsScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.account_balance_wallet, size: 20, color: Colors.indigo),
-                    const SizedBox(width: 8),
+                        const Icon(
+                          Icons.account_balance_wallet,
+                          size: 20,
+                          color: Colors.indigo,
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           "Who Owes You",
                           style: GoogleFonts.inter(
@@ -100,18 +104,18 @@ class GroupDetailsScreen extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
+                        TextButton(
+                          onPressed: () {
+                            showDialog(
+                              context: context,
                               builder: (context) => ManageFriendsDialog(
-                            groupId: groupId,
+                                groupId: groupId,
                                 currentFriends: friends,
-                          ),
-                        );
-                      },
+                              ),
+                            );
+                          },
                           child: const Text("Manage Friends"),
-                        )
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -125,12 +129,13 @@ class GroupDetailsScreen extends StatelessWidget {
                         if (!expenseSnapshot.hasData) {
                           return const SizedBox.shrink();
                         }
-                        
+
                         // Calculate balances per friend (only unpaid debts)
                         final Map<String, double> balances = {};
                         for (var expenseDoc in expenseSnapshot.data!.docs) {
-                          final expense = expenseDoc.data() as Map<String, dynamic>;
-                          
+                          final expense =
+                              expenseDoc.data() as Map<String, dynamic>;
+
                           // Support both old format (owedBy) and new format (debts array)
                           if (expense.containsKey('debts')) {
                             // New format: debts array
@@ -139,56 +144,81 @@ class GroupDetailsScreen extends StatelessWidget {
                               final debtData = debt as Map<String, dynamic>;
                               final paid = debtData['paid'] as bool? ?? false;
                               if (paid) continue; // Skip paid debts
-                              
-                              double amount = (debtData['amount'] as num?)?.toDouble() ?? 0.0;
+
+                              double amount =
+                                  (debtData['amount'] as num?)?.toDouble() ??
+                                  0.0;
 
                               // Calculate final amount with tax/service
-                              final hasBaseAmount = debtData['baseAmount'] != null;
+                              final hasBaseAmount =
+                                  debtData['baseAmount'] != null;
                               if (hasBaseAmount) {
                                 // New format: calculate from baseAmount + per-person tax/service
-                                final baseAmount = (debtData['baseAmount'] as num?)?.toDouble() ?? 0.0;
-                                final taxForDebt = (debtData['taxAmount'] as num?)?.toDouble() ?? 0.0;
-                                final serviceForDebt = (debtData['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-                                amount = baseAmount + taxForDebt + serviceForDebt;
+                                final baseAmount =
+                                    (debtData['baseAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
+                                final taxForDebt =
+                                    (debtData['taxAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
+                                final serviceForDebt =
+                                    (debtData['serviceAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
+                                amount =
+                                    baseAmount + taxForDebt + serviceForDebt;
                               } else {
                                 // Backward compatibility: for older expenses that don't
                                 // have per-person tax/service, distribute expense-level
                                 // tax/service proportionally by base amount.
                                 final expenseBaseTotal =
-                                    (expense['totalAmount'] as num?)?.toDouble() ?? 0.0;
+                                    (expense['totalAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
                                 final expenseTaxAmount =
-                                    (expense['taxAmount'] as num?)?.toDouble() ?? 0.0;
+                                    (expense['taxAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
                                 final expenseServiceAmount =
-                                    (expense['serviceAmount'] as num?)?.toDouble() ?? 0.0;
+                                    (expense['serviceAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
                                 if (expenseBaseTotal > 0 &&
-                                    (expenseTaxAmount != 0 || expenseServiceAmount != 0)) {
+                                    (expenseTaxAmount != 0 ||
+                                        expenseServiceAmount != 0)) {
                                   final ratio = amount / expenseBaseTotal;
-                                  amount = amount +
+                                  amount =
+                                      amount +
                                       expenseTaxAmount * ratio +
                                       expenseServiceAmount * ratio;
                                 }
                               }
 
-                              final friendName = debtData['friendName'] as String? ?? '';
-                              
+                              final friendName =
+                                  debtData['friendName'] as String? ?? '';
+
                               if (friendName.isNotEmpty) {
-                                balances[friendName] = (balances[friendName] ?? 0.0) + amount;
+                                balances[friendName] =
+                                    (balances[friendName] ?? 0.0) + amount;
                               }
                             }
                           } else {
                             // Old format: single owedBy (for backward compatibility)
                             final paid = expense['paid'] as bool? ?? false;
                             if (paid) continue; // Skip paid expenses
-                            
-                            final amount = (expense['amount'] as num?)?.toDouble() ?? 0.0;
+
+                            final amount =
+                                (expense['amount'] as num?)?.toDouble() ?? 0.0;
                             final owedBy = expense['owedBy'] as String? ?? '';
-                            
+
                             if (owedBy.isNotEmpty) {
-                              balances[owedBy] = (balances[owedBy] ?? 0.0) + amount;
+                              balances[owedBy] =
+                                  (balances[owedBy] ?? 0.0) + amount;
                             }
                           }
                         }
-                        
+
                         if (balances.isEmpty) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +236,7 @@ class GroupDetailsScreen extends StatelessWidget {
                             ],
                           );
                         }
-                        
+
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -214,7 +244,9 @@ class GroupDetailsScreen extends StatelessWidget {
                               final friendName = entry.key;
                               final amount = entry.value;
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
                                 child: Row(
                                   children: [
                                     Expanded(
@@ -227,7 +259,10 @@ class GroupDetailsScreen extends StatelessWidget {
                                       ),
                                     ),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: Colors.red.shade50,
                                         borderRadius: BorderRadius.circular(16),
@@ -243,15 +278,19 @@ class GroupDetailsScreen extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 8),
                                     IconButton(
-                                      icon: const Icon(Icons.check_circle, size: 20),
+                                      icon: const Icon(
+                                        Icons.check_circle,
+                                        size: 20,
+                                      ),
                                       color: Colors.green,
                                       tooltip: "Mark all as paid",
-                                      onPressed: () => _markAllDebtsAsPaidForFriend(
-                                        context,
-                                        groupId,
-                                        friendName,
-                                        amount,
-                                      ),
+                                      onPressed: () =>
+                                          _markAllDebtsAsPaidForFriend(
+                                            context,
+                                            groupId,
+                                            friendName,
+                                            amount,
+                                          ),
                                     ),
                                   ],
                                 ),
@@ -275,10 +314,12 @@ class GroupDetailsScreen extends StatelessWidget {
                       .orderBy('date', descending: true)
                       .snapshots(),
                   builder: (context, expenseSnapshot) {
-                    if (expenseSnapshot.connectionState == ConnectionState.waiting) {
+                    if (expenseSnapshot.connectionState ==
+                        ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    if (!expenseSnapshot.hasData || expenseSnapshot.data!.docs.isEmpty) {
+                    if (!expenseSnapshot.hasData ||
+                        expenseSnapshot.data!.docs.isEmpty) {
                       return const Center(
                         child: Text("No expenses yet. Tap + to add one."),
                       );
@@ -293,7 +334,7 @@ class GroupDetailsScreen extends StatelessWidget {
                         final data = expense.data() as Map<String, dynamic>;
                         final title = data['title'] as String? ?? '';
                         final date = data['date'] as Timestamp?;
-                        
+
                         // Support both old and new format
                         final bool hasDebts = data.containsKey('debts');
                         final List<Map<String, dynamic>> debts;
@@ -306,13 +347,16 @@ class GroupDetailsScreen extends StatelessWidget {
                             (data['totalWithCharges'] as num?)?.toDouble() ??
                             (totalAmount + taxAmount + serviceAmount);
                         bool allPaid = true;
-                        
+
                         if (hasDebts) {
                           // New format: debts array
                           final debtsList = data['debts'] as List? ?? [];
-                          debts = debtsList.map((d) => d as Map<String, dynamic>).toList();
+                          debts = debtsList
+                              .map((d) => d as Map<String, dynamic>)
+                              .toList();
                           for (var debt in debts) {
-                            final amount = (debt['amount'] as num?)?.toDouble() ?? 0.0;
+                            final amount =
+                                (debt['amount'] as num?)?.toDouble() ?? 0.0;
                             totalAmount += amount;
                             if (!(debt['paid'] as bool? ?? false)) {
                               allPaid = false;
@@ -320,26 +364,34 @@ class GroupDetailsScreen extends StatelessWidget {
                           }
                         } else {
                           // Old format: single owedBy (for backward compatibility)
-                          final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+                          final amount =
+                              (data['amount'] as num?)?.toDouble() ?? 0.0;
                           final owedBy = data['owedBy'] as String? ?? '';
                           final paid = data['paid'] as bool? ?? false;
                           totalAmount = amount;
                           allPaid = paid;
-                          debts = [{
-                            'friendName': owedBy,
-                            'amount': amount,
-                            'description': '',
-                            'paid': paid,
-                          }];
+                          debts = [
+                            {
+                              'friendName': owedBy,
+                              'amount': amount,
+                              'description': '',
+                              'paid': paid,
+                            },
+                          ];
                         }
 
                         return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           elevation: 2,
                           color: allPaid ? Colors.grey.shade100 : null,
                           child: ExpansionTile(
                             leading: CircleAvatar(
-                              backgroundColor: allPaid ? Colors.green.shade100 : Colors.indigo.shade100,
+                              backgroundColor: allPaid
+                                  ? Colors.green.shade100
+                                  : Colors.indigo.shade100,
                               child: Icon(
                                 allPaid ? Icons.check_circle : Icons.receipt,
                                 color: allPaid ? Colors.green : Colors.indigo,
@@ -352,13 +404,18 @@ class GroupDetailsScreen extends StatelessWidget {
                                     title,
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      decoration: allPaid ? TextDecoration.lineThrough : null,
+                                      decoration: allPaid
+                                          ? TextDecoration.lineThrough
+                                          : null,
                                     ),
                                   ),
                                 ),
                                 if (allPaid)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: Colors.green.shade50,
                                       borderRadius: BorderRadius.circular(12),
@@ -397,7 +454,10 @@ class GroupDetailsScreen extends StatelessWidget {
                                 if (date != null)
                                   Text(
                                     _formatDate(date),
-                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
                                   ),
                               ],
                             ),
@@ -411,7 +471,7 @@ class GroupDetailsScreen extends StatelessWidget {
                                   onPressed: () {
                                     showDialog(
                                       context: context,
-                                builder: (context) => EditExpenseDialog(
+                                      builder: (context) => EditExpenseDialog(
                                         groupId: groupId,
                                         expenseId: expense.id,
                                         friends: friends,
@@ -419,12 +479,12 @@ class GroupDetailsScreen extends StatelessWidget {
                                         initialDebts: debts,
                                         initialTaxPercent:
                                             (data['taxPercent'] as num?)
-                                                    ?.toDouble() ??
-                                                0.0,
+                                                ?.toDouble() ??
+                                            0.0,
                                         initialServicePercent:
                                             (data['servicePercent'] as num?)
-                                                    ?.toDouble() ??
-                                                0.0,
+                                                ?.toDouble() ??
+                                            0.0,
                                       ),
                                     );
                                   },
@@ -433,49 +493,69 @@ class GroupDetailsScreen extends StatelessWidget {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                Text(
-                                  "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
-                                  style: GoogleFonts.inter(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: allPaid ? Colors.grey : Colors.red.shade700,
-                                    letterSpacing: -0.3,
-                                  ),
-                                ),
+                                    Text(
+                                      "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
+                                      style: GoogleFonts.inter(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: allPaid
+                                            ? Colors.grey
+                                            : Colors.red.shade700,
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
                             ),
                             children: debts.map((debt) {
-                              final friendName = debt['friendName'] as String? ?? '';
-                              double amount = (debt['amount'] as num?)?.toDouble() ?? 0.0;
-                              
+                              final friendName =
+                                  debt['friendName'] as String? ?? '';
+                              double amount =
+                                  (debt['amount'] as num?)?.toDouble() ?? 0.0;
+
                               // Calculate final amount with tax/service if needed
                               final hasBaseAmount = debt['baseAmount'] != null;
                               if (hasBaseAmount) {
                                 // New format: calculate from baseAmount + per-person tax/service
-                                final baseAmount = (debt['baseAmount'] as num?)?.toDouble() ?? 0.0;
-                                final taxForDebt = (debt['taxAmount'] as num?)?.toDouble() ?? 0.0;
-                                final serviceForDebt = (debt['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-                                amount = baseAmount + taxForDebt + serviceForDebt;
+                                final baseAmount =
+                                    (debt['baseAmount'] as num?)?.toDouble() ??
+                                    0.0;
+                                final taxForDebt =
+                                    (debt['taxAmount'] as num?)?.toDouble() ??
+                                    0.0;
+                                final serviceForDebt =
+                                    (debt['serviceAmount'] as num?)
+                                        ?.toDouble() ??
+                                    0.0;
+                                amount =
+                                    baseAmount + taxForDebt + serviceForDebt;
                               } else {
                                 // Backward compatibility: distribute expense-level tax/service proportionally
                                 final expenseBaseTotal = totalAmount;
                                 final expenseTaxAmount = taxAmount;
                                 final expenseServiceAmount = serviceAmount;
-                                if (expenseBaseTotal > 0 && (expenseTaxAmount != 0 || expenseServiceAmount != 0)) {
+                                if (expenseBaseTotal > 0 &&
+                                    (expenseTaxAmount != 0 ||
+                                        expenseServiceAmount != 0)) {
                                   final ratio = amount / expenseBaseTotal;
-                                  amount = amount + expenseTaxAmount * ratio + expenseServiceAmount * ratio;
+                                  amount =
+                                      amount +
+                                      expenseTaxAmount * ratio +
+                                      expenseServiceAmount * ratio;
                                 }
                               }
-                              
-                              final description = debt['description'] as String? ?? '';
+
+                              final description =
+                                  debt['description'] as String? ?? '';
                               final paid = debt['paid'] as bool? ?? false;
-                              
+
                               return ListTile(
                                 dense: true,
                                 leading: Icon(
-                                  paid ? Icons.check_circle : Icons.person_outline,
+                                  paid
+                                      ? Icons.check_circle
+                                      : Icons.person_outline,
                                   color: paid ? Colors.green : Colors.grey,
                                   size: 20,
                                 ),
@@ -483,7 +563,9 @@ class GroupDetailsScreen extends StatelessWidget {
                                   friendName,
                                   style: TextStyle(
                                     fontWeight: FontWeight.w500,
-                                    decoration: paid ? TextDecoration.lineThrough : null,
+                                    decoration: paid
+                                        ? TextDecoration.lineThrough
+                                        : null,
                                   ),
                                 ),
                                 subtitle: description.isNotEmpty
@@ -496,12 +578,17 @@ class GroupDetailsScreen extends StatelessWidget {
                                       "RM ${amount.toStringAsFixed(2)}",
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: paid ? Colors.grey : Colors.red.shade700,
+                                        color: paid
+                                            ? Colors.grey
+                                            : Colors.red.shade700,
                                       ),
                                     ),
                                     if (!paid)
                                       IconButton(
-                                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                                        icon: const Icon(
+                                          Icons.check_circle_outline,
+                                          size: 18,
+                                        ),
                                         color: Colors.green,
                                         tooltip: "Mark as Paid",
                                         onPressed: () => _markDebtAsPaid(
@@ -531,10 +618,8 @@ class GroupDetailsScreen extends StatelessWidget {
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => AddExpenseDialog(
-                  groupId: groupId,
-                  friends: friends,
-                ),
+                builder: (context) =>
+                    AddExpenseDialog(groupId: groupId, friends: friends),
               );
             },
             label: const Text("Add Expense"),
@@ -561,7 +646,13 @@ class GroupDetailsScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _markDebtAsPaid(BuildContext context, String expenseId, String groupId, int debtIndex, double amount) async {
+  Future<void> _markDebtAsPaid(
+    BuildContext context,
+    String expenseId,
+    String groupId,
+    int debtIndex,
+    double amount,
+  ) async {
     try {
       final expenseRef = FirebaseFirestore.instance
           .collection('groups')
@@ -569,85 +660,63 @@ class GroupDetailsScreen extends StatelessWidget {
           .collection('expenses')
           .doc(expenseId);
 
-      // Get current expense data
-      final expenseDoc = await expenseRef.get();
-      if (!expenseDoc.exists) return;
+      var wasUpdated = false;
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final expenseDoc = await transaction.get(expenseRef);
+        if (!expenseDoc.exists) return;
+        final data = expenseDoc.data() as Map<String, dynamic>;
 
-      final data = expenseDoc.data() as Map<String, dynamic>;
-      
-      if (data.containsKey('debts')) {
-        // New format: update specific debt in array
-        // Note: Cannot use FieldValue.serverTimestamp() inside arrays, so we use DateTime.now()
-        final debts = List<Map<String, dynamic>>.from(data['debts'] as List);
-        if (debtIndex >= 0 && debtIndex < debts.length) {
-          final debt = debts[debtIndex];
-          // Recompute effective amount (including tax/service) for safety
-          double effectiveAmount =
-              (debt['amount'] as num?)?.toDouble() ?? amount;
-          final baseAmount =
-              (debt['baseAmount'] as num?)?.toDouble();
-          if (baseAmount == null) {
-            final expenseBaseTotal =
-                (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
-            final expenseTaxAmount =
-                (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
-            final expenseServiceAmount =
-                (data['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-            if (expenseBaseTotal > 0 &&
-                (expenseTaxAmount != 0 || expenseServiceAmount != 0)) {
-              final ratio = effectiveAmount / expenseBaseTotal;
-              effectiveAmount = effectiveAmount +
-                  expenseTaxAmount * ratio +
-                  expenseServiceAmount * ratio;
-            }
+        if (data.containsKey('debts')) {
+          // New format: update specific debt in array
+          // Note: Cannot use FieldValue.serverTimestamp() inside arrays, so we use DateTime.now()
+          final debts = List<Map<String, dynamic>>.from(data['debts'] as List);
+          if (debtIndex >= 0 && debtIndex < debts.length) {
+            final debt = debts[debtIndex];
+            if (debt['paid'] == true) return;
+            final effectiveAmount = effectiveDebtAmount(debt, expense: data);
+
+            debts[debtIndex]['paid'] = true;
+            final now = DateTime.now();
+            debts[debtIndex]['paidAt'] =
+                '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
+            transaction.update(expenseRef, {'debts': debts});
+            final groupRef = FirebaseFirestore.instance
+                .collection('groups')
+                .doc(groupId);
+            transaction.update(groupRef, {
+              'totalOwed': FieldValue.increment(-effectiveAmount),
+            });
+            wasUpdated = true;
+            return;
           }
-
-          debts[debtIndex]['paid'] = true;
-          final now = DateTime.now();
-          debts[debtIndex]['paidAt'] =
-              '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-
-          await expenseRef.update({'debts': debts});
-
-          // Decrease total owed with effective amount
+        } else {
+          if (data['paid'] == true) return;
+          // Old format: mark entire expense as paid
+          transaction.update(expenseRef, {
+            'paid': true,
+            'paidAt': FieldValue.serverTimestamp(),
+          });
           final groupRef = FirebaseFirestore.instance
               .collection('groups')
               .doc(groupId);
-          await groupRef.update({
-            'totalOwed': FieldValue.increment(-effectiveAmount),
+          transaction.update(groupRef, {
+            'totalOwed': FieldValue.increment(-amount),
           });
-
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Payment marked as received!")),
-            );
-          }
-          return;
+          wasUpdated = true;
         }
-      } else {
-        // Old format: mark entire expense as paid
-        await expenseRef.update({
-          'paid': true,
-          'paidAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      // Old-format expense: decrease total owed using original amount
-      final groupRef = FirebaseFirestore.instance.collection('groups').doc(groupId);
-      await groupRef.update({
-        'totalOwed': FieldValue.increment(-amount),
       });
 
-      if (context.mounted) {
+      if (wasUpdated && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Payment marked as received!")),
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     }
   }
@@ -703,21 +772,22 @@ class GroupDetailsScreen extends StatelessWidget {
         if (data.containsKey('debts')) {
           // New format: debts array
           final debts = List<Map<String, dynamic>>.from(data['debts'] as List);
-          
+
           for (var debt in debts) {
             final debtFriendName = debt['friendName'] as String? ?? '';
             final paid = debt['paid'] as bool? ?? false;
-            
+
             if (debtFriendName == friendName && !paid) {
               debt['paid'] = true;
               // Note: Cannot use FieldValue.serverTimestamp() inside arrays, so we use DateTime.now()
               final now = DateTime.now();
-              debt['paidAt'] = '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+              debt['paidAt'] =
+                  '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
               totalMarkedAsPaid += (debt['amount'] as num?)?.toDouble() ?? 0.0;
               needsUpdate = true;
             }
           }
-          
+
           if (needsUpdate) {
             batch.update(expenseRef, {'debts': debts});
           }
@@ -725,12 +795,13 @@ class GroupDetailsScreen extends StatelessWidget {
           // Old format: single owedBy
           final owedBy = data['owedBy'] as String? ?? '';
           final paid = data['paid'] as bool? ?? false;
-          
+
           if (owedBy == friendName && !paid) {
             final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
             batch.update(expenseRef, {
               'paid': true,
-              'paidAt': FieldValue.serverTimestamp(), // This is OK at document level
+              'paidAt':
+                  FieldValue.serverTimestamp(), // This is OK at document level
             });
             totalMarkedAsPaid += amount;
           }
@@ -739,7 +810,9 @@ class GroupDetailsScreen extends StatelessWidget {
 
       // Update total owed
       if (totalMarkedAsPaid > 0) {
-        final groupRef = FirebaseFirestore.instance.collection('groups').doc(groupId);
+        final groupRef = FirebaseFirestore.instance
+            .collection('groups')
+            .doc(groupId);
         batch.update(groupRef, {
           'totalOwed': FieldValue.increment(-totalMarkedAsPaid),
         });
@@ -758,9 +831,9 @@ class GroupDetailsScreen extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     }
   }
@@ -793,29 +866,39 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
 
     // Check strict duplicates
     if (widget.currentFriends.contains(name)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Friend already exists!")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Friend already exists!")));
       return;
     }
 
     try {
-      await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).update({
-        'friends': FieldValue.arrayUnion([name]),
-      });
+      await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId)
+          .update({
+            'friends': FieldValue.arrayUnion([name]),
+          });
       _nameController.clear();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
 
   Future<void> _removeFriend(String friendName) async {
     try {
-      await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).update({
-        'friends': FieldValue.arrayRemove([friendName]),
-      });
+      await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId)
+          .update({
+            'friends': FieldValue.arrayRemove([friendName]),
+          });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
 
@@ -831,7 +914,9 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
               Expanded(
                 child: TextField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: "Friend Name (e.g. John)"),
+                  decoration: const InputDecoration(
+                    labelText: "Friend Name (e.g. John)",
+                  ),
                   textCapitalization: TextCapitalization.words,
                 ),
               ),
@@ -849,26 +934,33 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
             child: widget.currentFriends.isEmpty
                 ? const Center(child: Text("No friends added yet"))
                 : ListView.builder(
-              shrinkWrap: true,
+                    shrinkWrap: true,
                     itemCount: widget.currentFriends.length,
-              itemBuilder: (context, index) {
+                    itemBuilder: (context, index) {
                       final friend = widget.currentFriends[index];
-                return ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.person),
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.person),
                         title: Text(friend.toString()),
                         trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                          icon: const Icon(
+                            Icons.delete,
+                            color: Colors.red,
+                            size: 20,
+                          ),
                           onPressed: () => _removeFriend(friend.toString()),
                         ),
-                );
-              },
-            ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Done")),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Done"),
+        ),
       ],
     );
   }
@@ -945,7 +1037,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
       _amountControllers.remove(index);
       _descriptionControllers.remove(index);
       _debts.removeAt(index);
-      
+
       // Reindex controllers
       final newAmountControllers = <int, TextEditingController>{};
       final newDescriptionControllers = <int, TextEditingController>{};
@@ -953,12 +1045,16 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
         if (_amountControllers.containsKey(i + 1)) {
           newAmountControllers[i] = _amountControllers[i + 1]!;
         } else {
-          newAmountControllers[i] = TextEditingController(text: _debts[i].amount);
+          newAmountControllers[i] = TextEditingController(
+            text: _debts[i].amount,
+          );
         }
         if (_descriptionControllers.containsKey(i + 1)) {
           newDescriptionControllers[i] = _descriptionControllers[i + 1]!;
         } else {
-          newDescriptionControllers[i] = TextEditingController(text: _debts[i].description);
+          newDescriptionControllers[i] = TextEditingController(
+            text: _debts[i].description,
+          );
         }
       }
       _amountControllers.clear();
@@ -980,7 +1076,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
     if (_debts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please add at least one friend who owes you.")),
+        const SnackBar(
+          content: Text("Please add at least one friend who owes you."),
+        ),
       );
       return;
     }
@@ -993,18 +1091,23 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     for (int i = 0; i < _debts.length; i++) {
       final debt = _debts[i];
       final amountText = _amountControllers[i]?.text.trim() ?? debt.amount;
-      final description = _descriptionControllers[i]?.text.trim() ?? debt.description;
-      
+      final description =
+          _descriptionControllers[i]?.text.trim() ?? debt.description;
+
       if (debt.friendName.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please select a friend for all entries.")),
+          const SnackBar(
+            content: Text("Please select a friend for all entries."),
+          ),
         );
         return;
       }
 
       if (amountText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Please enter an amount for ${debt.friendName}.")),
+          SnackBar(
+            content: Text("Please enter an amount for ${debt.friendName}."),
+          ),
         );
         return;
       }
@@ -1073,36 +1176,39 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     setState(() => _isLoading = true);
 
     try {
-      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId);
 
-      // Add expense with multiple debts
-      await groupRef.collection('expenses').add({
-        'title': title,
-        'debts': debtsData,
-        'totalAmount': totalAmount,
-        'taxPercent': taxPercent,
-        'servicePercent': servicePercent,
-        'taxAmount': taxAmount,
-        'serviceAmount': serviceAmount,
-        'totalWithCharges': totalWithCharges,
-        'date': FieldValue.serverTimestamp(),
-      });
-
-      // Update total owed
-      await groupRef.update({
-        'totalOwed': FieldValue.increment(totalWithCharges),
-      });
-
-      // Add any new friends to the friends list
-      if (friendsToAdd.isNotEmpty) {
-        await groupRef.update({
-          'friends': FieldValue.arrayUnion(friendsToAdd.toList()),
+      final expenseRef = groupRef.collection('expenses').doc();
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        transaction.set(expenseRef, {
+          'title': title,
+          'debts': debtsData,
+          'totalAmount': totalAmount,
+          'taxPercent': taxPercent,
+          'servicePercent': servicePercent,
+          'taxAmount': taxAmount,
+          'serviceAmount': serviceAmount,
+          'totalWithCharges': totalWithCharges,
+          'date': FieldValue.serverTimestamp(),
         });
-      }
+        final groupUpdates = <String, dynamic>{
+          'totalOwed': FieldValue.increment(roundCurrency(totalWithCharges)),
+        };
+        if (friendsToAdd.isNotEmpty) {
+          groupUpdates['friends'] = FieldValue.arrayUnion(
+            friendsToAdd.toList(),
+          );
+        }
+        transaction.update(groupRef, groupUpdates);
+      });
 
-      if (mounted) Navigator.pop(context); 
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1113,7 +1219,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     if (widget.friends.isEmpty) {
       return AlertDialog(
         title: const Text("Add Expense"),
-        content: const Text("Please add at least one friend first in the Manage Friends section."),
+        content: const Text(
+          "Please add at least one friend first in the Manage Friends section.",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1150,8 +1258,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1164,8 +1273,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                 ),
               ],
@@ -1221,14 +1331,21 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                                   labelText: "Friend",
                                   border: OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 16,
+                                  ),
                                 ),
-                                items: widget.friends.map<DropdownMenuItem<String>>((dynamic value) {
-                                  return DropdownMenuItem<String>(
-                                    value: value.toString(),
-                                    child: Text(value.toString()),
-                                  );
-                                }).toList(),
+                                items: widget.friends
+                                    .map<DropdownMenuItem<String>>((
+                                      dynamic value,
+                                    ) {
+                                      return DropdownMenuItem<String>(
+                                        value: value.toString(),
+                                        child: Text(value.toString()),
+                                      );
+                                    })
+                                    .toList(),
                                 onChanged: (String? newValue) {
                                   setState(() {
                                     _debts[index].friendName = newValue ?? '';
@@ -1244,8 +1361,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                           ],
                         ),
                         const SizedBox(height: 8),
-            TextField(
-                          controller: _amountControllers[index] ??= TextEditingController(text: _debts[index].amount),
+                        TextField(
+                          controller: _amountControllers[index] ??=
+                              TextEditingController(text: _debts[index].amount),
                           decoration: const InputDecoration(
                             labelText: "Base amount (before tax/service)",
                             prefixText: "RM ",
@@ -1253,14 +1371,19 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                             border: OutlineInputBorder(),
                             isDense: true,
                           ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           onChanged: (value) {
                             _debts[index].amount = value;
                           },
                         ),
                         const SizedBox(height: 8),
                         TextField(
-                          controller: _descriptionControllers[index] ??= TextEditingController(text: _debts[index].description),
+                          controller: _descriptionControllers[index] ??=
+                              TextEditingController(
+                                text: _debts[index].description,
+                              ),
                           decoration: const InputDecoration(
                             labelText: "Description (optional)",
                             hintText: "e.g. Their share of dinner",
@@ -1337,18 +1460,18 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
-  double _originalTotalAmount = 0.0;
 
   @override
   void initState() {
     super.initState();
     _titleController.text = widget.initialTitle;
-    _taxPercentController.text =
-        widget.initialTaxPercent == 0.0 ? '' : widget.initialTaxPercent.toString();
+    _taxPercentController.text = widget.initialTaxPercent == 0.0
+        ? ''
+        : widget.initialTaxPercent.toString();
     _servicePercentController.text = widget.initialServicePercent == 0.0
         ? ''
         : widget.initialServicePercent.toString();
-    
+
     // Convert initial debts to DebtEntry objects
     for (var debt in widget.initialDebts) {
       final friendName = debt['friendName'] as String? ?? '';
@@ -1357,21 +1480,21 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
           (debt['baseAmount'] as num?)?.toDouble() ?? amountWithCharges;
       final description = debt['description'] as String? ?? '';
       final paid = debt['paid'] as bool? ?? false;
-      
-      _originalTotalAmount += amountWithCharges;
-      
+
       final index = _debts.length;
-      _debts.add(DebtEntry(
-        friendName: friendName,
-        amount: baseAmount.toStringAsFixed(2),
-        description: description,
-        paid: paid,
-      ));
-      
-      _amountControllers[index] =
-          TextEditingController(text: baseAmount.toStringAsFixed(2));
-      _descriptionControllers[index] =
-          TextEditingController(text: description);
+      _debts.add(
+        DebtEntry(
+          friendName: friendName,
+          amount: baseAmount.toStringAsFixed(2),
+          description: description,
+          paid: paid,
+        ),
+      );
+
+      _amountControllers[index] = TextEditingController(
+        text: baseAmount.toStringAsFixed(2),
+      );
+      _descriptionControllers[index] = TextEditingController(text: description);
     }
   }
 
@@ -1405,7 +1528,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
       _amountControllers.remove(index);
       _descriptionControllers.remove(index);
       _debts.removeAt(index);
-      
+
       // Reindex controllers
       final newAmountControllers = <int, TextEditingController>{};
       final newDescriptionControllers = <int, TextEditingController>{};
@@ -1413,12 +1536,16 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
         if (_amountControllers.containsKey(i + 1)) {
           newAmountControllers[i] = _amountControllers[i + 1]!;
         } else {
-          newAmountControllers[i] = TextEditingController(text: _debts[i].amount);
+          newAmountControllers[i] = TextEditingController(
+            text: _debts[i].amount,
+          );
         }
         if (_descriptionControllers.containsKey(i + 1)) {
           newDescriptionControllers[i] = _descriptionControllers[i + 1]!;
         } else {
-          newDescriptionControllers[i] = TextEditingController(text: _debts[i].description);
+          newDescriptionControllers[i] = TextEditingController(
+            text: _debts[i].description,
+          );
         }
       }
       _amountControllers.clear();
@@ -1440,7 +1567,9 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
 
     if (_debts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please add at least one friend who owes you.")),
+        const SnackBar(
+          content: Text("Please add at least one friend who owes you."),
+        ),
       );
       return;
     }
@@ -1453,18 +1582,23 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     for (int i = 0; i < _debts.length; i++) {
       final debt = _debts[i];
       final amountText = _amountControllers[i]?.text.trim() ?? debt.amount;
-      final description = _descriptionControllers[i]?.text.trim() ?? debt.description;
-      
+      final description =
+          _descriptionControllers[i]?.text.trim() ?? debt.description;
+
       if (debt.friendName.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please select a friend for all entries.")),
+          const SnackBar(
+            content: Text("Please select a friend for all entries."),
+          ),
         );
         return;
       }
 
       if (amountText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Please enter an amount for ${debt.friendName}.")),
+          SnackBar(
+            content: Text("Please enter an amount for ${debt.friendName}."),
+          ),
         );
         return;
       }
@@ -1532,11 +1666,12 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     setState(() => _isLoading = true);
 
     try {
-      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId);
       final expenseRef = groupRef.collection('expenses').doc(widget.expenseId);
 
-      // Update expense
-      await expenseRef.update({
+      final updatedExpense = <String, dynamic>{
         'title': title,
         'debts': debtsData,
         'totalAmount': totalAmount,
@@ -1545,26 +1680,37 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
         'taxAmount': taxAmount,
         'serviceAmount': serviceAmount,
         'totalWithCharges': totalWithCharges,
+      };
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final currentSnapshot = await transaction.get(expenseRef);
+        if (!currentSnapshot.exists) {
+          throw StateError('Expense no longer exists.');
+        }
+        final currentExpense = currentSnapshot.data() as Map<String, dynamic>;
+        final difference = roundCurrency(
+          outstandingExpenseTotal(updatedExpense) -
+              outstandingExpenseTotal(currentExpense),
+        );
+        transaction.update(expenseRef, updatedExpense);
+        final groupUpdates = <String, dynamic>{};
+        if (difference != 0) {
+          groupUpdates['totalOwed'] = FieldValue.increment(difference);
+        }
+        if (friendsToAdd.isNotEmpty) {
+          groupUpdates['friends'] = FieldValue.arrayUnion(
+            friendsToAdd.toList(),
+          );
+        }
+        if (groupUpdates.isNotEmpty) {
+          transaction.update(groupRef, groupUpdates);
+        }
       });
-
-      // Update total owed (adjust for difference)
-      final difference = totalWithCharges - _originalTotalAmount;
-      if (difference != 0) {
-        await groupRef.update({
-          'totalOwed': FieldValue.increment(difference),
-        });
-      }
-
-      // Add any new friends to the friends list
-      if (friendsToAdd.isNotEmpty) {
-        await groupRef.update({
-          'friends': FieldValue.arrayUnion(friendsToAdd.toList()),
-        });
-      }
 
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1575,7 +1721,9 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     if (widget.friends.isEmpty) {
       return AlertDialog(
         title: const Text("Edit Expense"),
-        content: const Text("Please add at least one friend first in the Manage Friends section."),
+        content: const Text(
+          "Please add at least one friend first in the Manage Friends section.",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1651,15 +1799,22 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                                   labelText: "Friend",
                                   border: OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 16,
+                                  ),
                                 ),
-                                items: widget.friends.map<DropdownMenuItem<String>>((dynamic value) {
-                return DropdownMenuItem<String>(
-                  value: value.toString(),
-                  child: Text(value.toString()),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
+                                items: widget.friends
+                                    .map<DropdownMenuItem<String>>((
+                                      dynamic value,
+                                    ) {
+                                      return DropdownMenuItem<String>(
+                                        value: value.toString(),
+                                        child: Text(value.toString()),
+                                      );
+                                    })
+                                    .toList(),
+                                onChanged: (String? newValue) {
                                   setState(() {
                                     _debts[index].friendName = newValue ?? '';
                                   });
@@ -1675,7 +1830,8 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                         ),
                         const SizedBox(height: 8),
                         TextField(
-                          controller: _amountControllers[index] ??= TextEditingController(text: _debts[index].amount),
+                          controller: _amountControllers[index] ??=
+                              TextEditingController(text: _debts[index].amount),
                           decoration: const InputDecoration(
                             labelText: "Base amount (before tax/service)",
                             prefixText: "RM ",
@@ -1683,14 +1839,19 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                             border: OutlineInputBorder(),
                             isDense: true,
                           ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           onChanged: (value) {
                             _debts[index].amount = value;
                           },
                         ),
                         const SizedBox(height: 8),
                         TextField(
-                          controller: _descriptionControllers[index] ??= TextEditingController(text: _debts[index].description),
+                          controller: _descriptionControllers[index] ??=
+                              TextEditingController(
+                                text: _debts[index].description,
+                              ),
                           decoration: const InputDecoration(
                             labelText: "Description (optional)",
                             hintText: "e.g. Their share of dinner",
@@ -1707,11 +1868,18 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Row(
                               children: [
-                                Icon(Icons.check_circle, color: Colors.green, size: 16),
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green,
+                                  size: 16,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   "This debt is marked as paid",
-                                  style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                                  style: TextStyle(
+                                    color: Colors.green.shade700,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1719,8 +1887,8 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                       ],
                     ),
                   ),
-              );
-            }),
+                );
+              }),
           ],
         ),
       ),

@@ -58,8 +58,10 @@ class GroupDetailsScreen extends StatelessWidget {
         // 2. DATA EXTRACTION
         final groupData = groupSnapshot.data!.data() as Map<String, dynamic>;
         final List<dynamic> friends = groupData['friends'] ?? [];
+        final colorScheme = Theme.of(context).colorScheme;
 
         return Scaffold(
+          backgroundColor: const Color(0xFFF6F7FB),
           appBar: AppBar(
             title: Text(
               groupName,
@@ -69,6 +71,22 @@ class GroupDetailsScreen extends StatelessWidget {
               ),
             ),
             elevation: 0,
+            actions: [
+              IconButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => ManageFriendsDialog(
+                      groupId: groupId,
+                      currentFriends: friends,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.group_outlined),
+                tooltip: "Manage friends",
+              ),
+              const SizedBox(width: 6),
+            ],
           ),
 
           // 3. BODY: Balances Summary + Expenses List
@@ -76,13 +94,22 @@ class GroupDetailsScreen extends StatelessWidget {
             children: [
               // --- Balances Summary ---
               Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Colors.indigo.shade50, Colors.indigo.shade100],
+                    colors: [colorScheme.primary, const Color(0xFF4C3EAA)],
                   ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.primary.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -90,21 +117,22 @@ class GroupDetailsScreen extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(
-                          Icons.account_balance_wallet,
+                          Icons.account_balance_wallet_outlined,
                           size: 20,
-                          color: Colors.indigo,
+                          color: Colors.white,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          "Who Owes You",
+                          "Outstanding balances",
                           style: GoogleFonts.inter(
                             fontWeight: FontWeight.w600,
                             fontSize: 16,
                             letterSpacing: -0.3,
+                            color: Colors.white,
                           ),
                         ),
                         const Spacer(),
-                        TextButton(
+                        TextButton.icon(
                           onPressed: () {
                             showDialog(
                               context: context,
@@ -114,7 +142,15 @@ class GroupDetailsScreen extends StatelessWidget {
                               ),
                             );
                           },
-                          child: const Text("Manage Friends"),
+                          icon: const Icon(Icons.group_outlined, size: 17),
+                          label: Text("${friends.length}"),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.12,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
                         ),
                       ],
                     ),
@@ -219,70 +255,118 @@ class GroupDetailsScreen extends StatelessWidget {
                           }
                         }
 
+                        final outstandingTotal = balances.values.fold<double>(
+                          0,
+                          (total, amount) => total + amount,
+                        );
+
                         if (balances.isEmpty) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  "No outstanding balances",
-                                  style: GoogleFonts.inter(
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w400,
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    "Everyone is settled up",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           );
                         }
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Text(
+                              "TOTAL TO COLLECT",
+                              style: GoogleFonts.inter(
+                                color: Colors.white.withValues(alpha: 0.72),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "RM ${outstandingTotal.toStringAsFixed(2)}",
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -1,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
                             ...balances.entries.map((entry) {
                               final friendName = entry.key;
                               final amount = entry.value;
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(15),
                                 ),
                                 child: Row(
                                   children: [
+                                    CircleAvatar(
+                                      radius: 17,
+                                      backgroundColor: Colors.white.withValues(
+                                        alpha: 0.18,
+                                      ),
+                                      child: Text(
+                                        friendName.isEmpty
+                                            ? "?"
+                                            : friendName[0].toUpperCase(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
                                         friendName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.inter(
+                                          color: Colors.white,
                                           fontWeight: FontWeight.w600,
-                                          letterSpacing: -0.2,
                                         ),
                                       ),
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.shade50,
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: Text(
-                                        "RM ${amount.toStringAsFixed(2)}",
-                                        style: GoogleFonts.inter(
-                                          color: Colors.red.shade700,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: -0.3,
-                                        ),
+                                    Text(
+                                      "RM ${amount.toStringAsFixed(2)}",
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
                                     IconButton(
                                       icon: const Icon(
-                                        Icons.check_circle,
-                                        size: 20,
+                                        Icons.check_circle_outline,
+                                        size: 21,
                                       ),
-                                      color: Colors.green,
+                                      color: Colors.white,
                                       tooltip: "Mark all as paid",
                                       onPressed: () =>
                                           _markAllDebtsAsPaidForFriend(
@@ -295,7 +379,7 @@ class GroupDetailsScreen extends StatelessWidget {
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         );
                       },
@@ -305,6 +389,29 @@ class GroupDetailsScreen extends StatelessWidget {
               ),
 
               // --- Expenses List (Inner Stream) ---
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                child: Row(
+                  children: [
+                    Text(
+                      "Expense history",
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      "Newest first",
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
@@ -320,14 +427,52 @@ class GroupDetailsScreen extends StatelessWidget {
                     }
                     if (!expenseSnapshot.hasData ||
                         expenseSnapshot.data!.docs.isEmpty) {
-                      return const Center(
-                        child: Text("No expenses yet. Tap + to add one."),
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primaryContainer,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.receipt_long_outlined,
+                                  size: 32,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                "No expenses yet",
+                                style: GoogleFonts.inter(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                "Add your first shared cost to start tracking who owes you.",
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     }
 
                     final expenses = expenseSnapshot.data!.docs;
 
                     return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 100),
                       itemCount: expenses.length,
                       itemBuilder: (context, index) {
                         final expense = expenses[index];
@@ -343,9 +488,9 @@ class GroupDetailsScreen extends StatelessWidget {
                             (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
                         final double serviceAmount =
                             (data['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-                        final double totalWithCharges =
+                        double totalWithCharges =
                             (data['totalWithCharges'] as num?)?.toDouble() ??
-                            (totalAmount + taxAmount + serviceAmount);
+                            0.0;
                         bool allPaid = true;
 
                         if (hasDebts) {
@@ -380,21 +525,48 @@ class GroupDetailsScreen extends StatelessWidget {
                           ];
                         }
 
+                        if (totalWithCharges <= 0) {
+                          totalWithCharges =
+                              totalAmount + taxAmount + serviceAmount;
+                        }
+
                         return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 0,
+                          color: allPaid
+                              ? colorScheme.surfaceContainerLow
+                              : colorScheme.surface,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(color: colorScheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          elevation: 2,
-                          color: allPaid ? Colors.grey.shade100 : null,
+                          clipBehavior: Clip.antiAlias,
                           child: ExpansionTile(
+                            tilePadding: const EdgeInsets.fromLTRB(
+                              14,
+                              6,
+                              10,
+                              6,
+                            ),
+                            childrenPadding: const EdgeInsets.fromLTRB(
+                              10,
+                              0,
+                              10,
+                              10,
+                            ),
+                            shape: const Border(),
+                            collapsedShape: const Border(),
                             leading: CircleAvatar(
                               backgroundColor: allPaid
-                                  ? Colors.green.shade100
-                                  : Colors.indigo.shade100,
+                                  ? colorScheme.tertiaryContainer
+                                  : colorScheme.primaryContainer,
                               child: Icon(
-                                allPaid ? Icons.check_circle : Icons.receipt,
-                                color: allPaid ? Colors.green : Colors.indigo,
+                                allPaid
+                                    ? Icons.check_rounded
+                                    : Icons.receipt_long_outlined,
+                                color: allPaid
+                                    ? colorScheme.onTertiaryContainer
+                                    : colorScheme.onPrimaryContainer,
                               ),
                             ),
                             title: Row(
@@ -435,28 +607,20 @@ class GroupDetailsScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  "${debts.length} friend${debts.length != 1 ? 's' : ''} • Subtotal: RM ${totalAmount.toStringAsFixed(2)}",
+                                  "${debts.length} ${debts.length == 1 ? 'person' : 'people'} • ${date == null ? 'Date unavailable' : _formatDate(date)}",
                                   style: GoogleFonts.inter(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w400,
-                                    color: Colors.grey.shade600,
+                                    color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                                 if (taxAmount > 0 || serviceAmount > 0)
                                   Text(
-                                    "Tax: RM ${taxAmount.toStringAsFixed(2)} • Service: RM ${serviceAmount.toStringAsFixed(2)} • Total: RM ${totalWithCharges.toStringAsFixed(2)}",
+                                    "Includes ${_formatCharges(taxAmount, serviceAmount)}",
                                     style: GoogleFonts.inter(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w400,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                if (date != null)
-                                  Text(
-                                    _formatDate(date),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                               ],
@@ -465,8 +629,11 @@ class GroupDetailsScreen extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, size: 20),
-                                  color: Colors.blue,
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 19,
+                                  ),
+                                  color: colorScheme.onSurfaceVariant,
                                   tooltip: "Edit Expense",
                                   onPressed: () {
                                     showDialog(
@@ -496,11 +663,11 @@ class GroupDetailsScreen extends StatelessWidget {
                                     Text(
                                       "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
                                       style: GoogleFonts.inter(
-                                        fontSize: 16,
+                                        fontSize: 15,
                                         fontWeight: FontWeight.w700,
                                         color: allPaid
-                                            ? Colors.grey
-                                            : Colors.red.shade700,
+                                            ? colorScheme.onSurfaceVariant
+                                            : colorScheme.primary,
                                         letterSpacing: -0.3,
                                       ),
                                     ),
@@ -552,11 +719,21 @@ class GroupDetailsScreen extends StatelessWidget {
 
                               return ListTile(
                                 dense: true,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                tileColor: colorScheme.surfaceContainerLow,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 2,
+                                ),
                                 leading: Icon(
                                   paid
                                       ? Icons.check_circle
                                       : Icons.person_outline,
-                                  color: paid ? Colors.green : Colors.grey,
+                                  color: paid
+                                      ? colorScheme.tertiary
+                                      : colorScheme.onSurfaceVariant,
                                   size: 20,
                                 ),
                                 title: Text(
@@ -579,8 +756,8 @@ class GroupDetailsScreen extends StatelessWidget {
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: paid
-                                            ? Colors.grey
-                                            : Colors.red.shade700,
+                                            ? colorScheme.onSurfaceVariant
+                                            : colorScheme.primary,
                                       ),
                                     ),
                                     if (!paid)
@@ -589,7 +766,7 @@ class GroupDetailsScreen extends StatelessWidget {
                                           Icons.check_circle_outline,
                                           size: 18,
                                         ),
-                                        color: Colors.green,
+                                        color: colorScheme.tertiary,
                                         tooltip: "Mark as Paid",
                                         onPressed: () => _markDebtAsPaid(
                                           context,
@@ -644,6 +821,17 @@ class GroupDetailsScreen extends StatelessWidget {
     } else {
       return "${date.day}/${date.month}/${date.year}";
     }
+  }
+
+  String _formatCharges(double taxAmount, double serviceAmount) {
+    final charges = <String>[];
+    if (taxAmount > 0) {
+      charges.add("RM ${taxAmount.toStringAsFixed(2)} tax");
+    }
+    if (serviceAmount > 0) {
+      charges.add("RM ${serviceAmount.toStringAsFixed(2)} service");
+    }
+    return charges.join(" + ");
   }
 
   Future<void> _markDebtAsPaid(

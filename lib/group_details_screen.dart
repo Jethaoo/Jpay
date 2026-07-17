@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'app_theme.dart';
 import 'debt_calculations.dart';
 
 class GroupDetailsScreen extends StatelessWidget {
@@ -61,7 +62,7 @@ class GroupDetailsScreen extends StatelessWidget {
         final colorScheme = Theme.of(context).colorScheme;
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF6F7FB),
+          backgroundColor: AppPalette.background,
           appBar: AppBar(
             title: Text(
               groupName,
@@ -97,19 +98,15 @@ class GroupDetailsScreen extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [colorScheme.primary, const Color(0xFF4C3EAA)],
+                    colors: [Color(0xFF202A33), AppPalette.surface],
                   ),
                   borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: colorScheme.primary.withValues(alpha: 0.18),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
+                  border: Border.all(
+                    color: AppPalette.blue.withValues(alpha: 0.45),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1583,6 +1580,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
       if (mounted) Navigator.pop(context);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -2301,6 +2299,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
 
       if (mounted) Navigator.pop(context);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -2469,13 +2468,13 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: AppPalette.surfaceElevated,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Center(
                     child: Text(
                       "Tap 'Add Friend' to add someone who owes you",
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: AppPalette.secondaryLabel),
                     ),
                   ),
                 )

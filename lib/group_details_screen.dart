@@ -1008,6 +1008,33 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.friends.isNotEmpty) {
+      _debts.add(DebtEntry(friendName: ''));
+      _amountControllers[0] = TextEditingController();
+      _descriptionControllers[0] = TextEditingController();
+    }
+  }
+
+  double _numberFrom(TextEditingController? controller) {
+    return double.tryParse(controller?.text.trim() ?? '') ?? 0;
+  }
+
+  double get _previewSubtotal => _amountControllers.values.fold(
+    0,
+    (total, controller) => total + _numberFrom(controller),
+  );
+
+  double get _previewTax =>
+      _previewSubtotal * _numberFrom(_taxPercentController) / 100;
+
+  double get _previewService =>
+      _previewSubtotal * _numberFrom(_servicePercentController) / 100;
+
+  String _currency(double value) => 'RM ${value.toStringAsFixed(2)}';
+
+  @override
   void dispose() {
     _titleController.dispose();
     _taxPercentController.dispose();
@@ -1216,209 +1243,410 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (widget.friends.isEmpty) {
       return AlertDialog(
-        title: const Text("Add Expense"),
+        icon: Icon(Icons.group_add_outlined, color: colorScheme.primary),
+        title: const Text("Add a friend first"),
         content: const Text(
-          "Please add at least one friend first in the Manage Friends section.",
+          "Add someone in Manage Friends before creating an expense.",
+          textAlign: TextAlign.center,
         ),
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
+            child: const Text("Got it"),
           ),
         ],
       );
     }
 
+    final previewTotal = _previewSubtotal + _previewTax + _previewService;
+
     return AlertDialog(
-      title: const Text("Add Expense"),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: "Expense Description",
-                hintText: "e.g. Dinner, Movie tickets",
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      title: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.receipt_long_outlined,
+              color: colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Add expense",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  "Record a shared cost",
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _isLoading ? null : () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+            tooltip: "Close",
+          ),
+        ],
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 520,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: "What was it for?",
+                  hintText: "Dinner, movie tickets, groceries...",
+                  prefixIcon: Icon(Icons.edit_note_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
               ),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _taxPercentController,
-                    decoration: const InputDecoration(
-                      labelText: "Tax % (optional)",
-                      hintText: "e.g. 6",
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+              const SizedBox(height: 24),
+              const Text(
+                "Additional charges",
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Applied proportionally to every person's share.",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _taxPercentController,
+                      decoration: const InputDecoration(
+                        labelText: "Tax",
+                        hintText: "0",
+                        suffixText: "%",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _servicePercentController,
-                    decoration: const InputDecoration(
-                      labelText: "Service % (optional)",
-                      hintText: "e.g. 10",
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _servicePercentController,
+                      decoration: const InputDecoration(
+                        labelText: "Service",
+                        hintText: "0",
+                        suffixText: "%",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Who Owes You?",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                TextButton.icon(
-                  onPressed: _addDebtEntry,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text("Add Friend"),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_debts.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Center(
-                  child: Text(
-                    "Tap 'Add Friend' to add someone who owes you",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              )
-            else
-              ...List.generate(_debts.length, (index) {
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: _debts[index].friendName.isEmpty
-                                    ? null
-                                    : _debts[index].friendName,
-                                decoration: const InputDecoration(
-                                  labelText: "Friend",
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 16,
-                                  ),
-                                ),
-                                items: widget.friends
-                                    .map<DropdownMenuItem<String>>((
-                                      dynamic value,
-                                    ) {
-                                      return DropdownMenuItem<String>(
-                                        value: value.toString(),
-                                        child: Text(value.toString()),
-                                      );
-                                    })
-                                    .toList(),
-                                onChanged: (String? newValue) {
-                                  setState(() {
-                                    _debts[index].friendName = newValue ?? '';
-                                  });
-                                },
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeDebtEntry(index),
-                              tooltip: "Remove",
-                            ),
-                          ],
+                        Text(
+                          "Who owes you?",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _amountControllers[index] ??=
-                              TextEditingController(text: _debts[index].amount),
-                          decoration: const InputDecoration(
-                            labelText: "Base amount (before tax/service)",
-                            prefixText: "RM ",
-                            hintText: "0.00",
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          onChanged: (value) {
-                            _debts[index].amount = value;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _descriptionControllers[index] ??=
-                              TextEditingController(
-                                text: _debts[index].description,
-                              ),
-                          decoration: const InputDecoration(
-                            labelText: "Description (optional)",
-                            hintText: "e.g. Their share of dinner",
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          textCapitalization: TextCapitalization.sentences,
-                          onChanged: (value) {
-                            _debts[index].description = value;
-                          },
+                        SizedBox(height: 3),
+                        Text(
+                          "Add each person's individual share",
+                          style: TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
-                );
-              }),
-          ],
+                  FilledButton.tonalIcon(
+                    onPressed: _addDebtEntry,
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text("Add"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_debts.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 28,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.group_outlined),
+                      SizedBox(height: 8),
+                      Text("No shares added yet"),
+                    ],
+                  ),
+                )
+              else
+                ...List.generate(_debts.length, (index) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 0,
+                    color: colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.secondaryContainer,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  "${index + 1}",
+                                  style: TextStyle(
+                                    color: colorScheme.onSecondaryContainer,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  "Share ${index + 1}",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(
+                                  Icons.delete_outline,
+                                  color: colorScheme.error,
+                                ),
+                                onPressed: () => _removeDebtEntry(index),
+                                tooltip: "Remove share",
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey(
+                                    "friend-$index-${_debts[index].friendName}",
+                                  ),
+                                  initialValue: _debts[index].friendName.isEmpty
+                                      ? null
+                                      : _debts[index].friendName,
+                                  decoration: const InputDecoration(
+                                    labelText: "Friend",
+                                    prefixIcon: Icon(Icons.person_outline),
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 16,
+                                    ),
+                                  ),
+                                  items: widget.friends
+                                      .map<DropdownMenuItem<String>>((
+                                        dynamic value,
+                                      ) {
+                                        return DropdownMenuItem<String>(
+                                          value: value.toString(),
+                                          child: Text(value.toString()),
+                                        );
+                                      })
+                                      .toList(),
+                                  onChanged: (String? newValue) {
+                                    setState(() {
+                                      _debts[index].friendName = newValue ?? '';
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _amountControllers[index] ??=
+                                TextEditingController(
+                                  text: _debts[index].amount,
+                                ),
+                            decoration: const InputDecoration(
+                              labelText: "Base amount",
+                              prefixText: "RM ",
+                              hintText: "0.00",
+                              helperText: "Before tax and service",
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (value) {
+                              _debts[index].amount = value;
+                              setState(() {});
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _descriptionControllers[index] ??=
+                                TextEditingController(
+                                  text: _debts[index].description,
+                                ),
+                            decoration: const InputDecoration(
+                              labelText: "Note (optional)",
+                              hintText: "Their share of dinner",
+                              prefixIcon: Icon(Icons.notes_outlined),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            onChanged: (value) {
+                              _debts[index].description = value;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  children: [
+                    _ExpensePreviewRow(
+                      label: "Subtotal",
+                      value: _currency(_previewSubtotal),
+                    ),
+                    const SizedBox(height: 8),
+                    _ExpensePreviewRow(
+                      label: "Tax & service",
+                      value: _currency(_previewTax + _previewService),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Divider(height: 1),
+                    ),
+                    _ExpensePreviewRow(
+                      label: "Total to collect",
+                      value: _currency(previewTotal),
+                      emphasized: true,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: const Text("Cancel"),
         ),
-        if (_isLoading)
-          const CircularProgressIndicator()
-        else
-          ElevatedButton(
-            onPressed: _saveExpense,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Save"),
+        FilledButton.icon(
+          onPressed: _isLoading ? null : _saveExpense,
+          icon: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_circle_outline),
+          label: Text(_isLoading ? "Saving..." : "Save expense"),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExpensePreviewRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasized;
+
+  const _ExpensePreviewRow({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: emphasized ? 16 : 14,
+      fontWeight: emphasized ? FontWeight.w700 : FontWeight.w500,
+    );
+
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: style)),
+        Text(value, style: style),
       ],
     );
   }

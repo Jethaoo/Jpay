@@ -58,8 +58,10 @@ class GroupDetailsScreen extends StatelessWidget {
         // 2. DATA EXTRACTION
         final groupData = groupSnapshot.data!.data() as Map<String, dynamic>;
         final List<dynamic> friends = groupData['friends'] ?? [];
+        final colorScheme = Theme.of(context).colorScheme;
 
         return Scaffold(
+          backgroundColor: const Color(0xFFF6F7FB),
           appBar: AppBar(
             title: Text(
               groupName,
@@ -69,6 +71,22 @@ class GroupDetailsScreen extends StatelessWidget {
               ),
             ),
             elevation: 0,
+            actions: [
+              IconButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => ManageFriendsDialog(
+                      groupId: groupId,
+                      currentFriends: friends,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.group_outlined),
+                tooltip: "Manage friends",
+              ),
+              const SizedBox(width: 6),
+            ],
           ),
 
           // 3. BODY: Balances Summary + Expenses List
@@ -76,13 +94,22 @@ class GroupDetailsScreen extends StatelessWidget {
             children: [
               // --- Balances Summary ---
               Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Colors.indigo.shade50, Colors.indigo.shade100],
+                    colors: [colorScheme.primary, const Color(0xFF4C3EAA)],
                   ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.primary.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -90,21 +117,22 @@ class GroupDetailsScreen extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(
-                          Icons.account_balance_wallet,
+                          Icons.account_balance_wallet_outlined,
                           size: 20,
-                          color: Colors.indigo,
+                          color: Colors.white,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          "Who Owes You",
+                          "Outstanding balances",
                           style: GoogleFonts.inter(
                             fontWeight: FontWeight.w600,
                             fontSize: 16,
                             letterSpacing: -0.3,
+                            color: Colors.white,
                           ),
                         ),
                         const Spacer(),
-                        TextButton(
+                        TextButton.icon(
                           onPressed: () {
                             showDialog(
                               context: context,
@@ -114,7 +142,15 @@ class GroupDetailsScreen extends StatelessWidget {
                               ),
                             );
                           },
-                          child: const Text("Manage Friends"),
+                          icon: const Icon(Icons.group_outlined, size: 17),
+                          label: Text("${friends.length}"),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.12,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
                         ),
                       ],
                     ),
@@ -219,70 +255,118 @@ class GroupDetailsScreen extends StatelessWidget {
                           }
                         }
 
+                        final outstandingTotal = balances.values.fold<double>(
+                          0,
+                          (total, amount) => total + amount,
+                        );
+
                         if (balances.isEmpty) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  "No outstanding balances",
-                                  style: GoogleFonts.inter(
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w400,
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    "Everyone is settled up",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           );
                         }
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Text(
+                              "TOTAL TO COLLECT",
+                              style: GoogleFonts.inter(
+                                color: Colors.white.withValues(alpha: 0.72),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "RM ${outstandingTotal.toStringAsFixed(2)}",
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -1,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
                             ...balances.entries.map((entry) {
                               final friendName = entry.key;
                               final amount = entry.value;
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(15),
                                 ),
                                 child: Row(
                                   children: [
+                                    CircleAvatar(
+                                      radius: 17,
+                                      backgroundColor: Colors.white.withValues(
+                                        alpha: 0.18,
+                                      ),
+                                      child: Text(
+                                        friendName.isEmpty
+                                            ? "?"
+                                            : friendName[0].toUpperCase(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
                                         friendName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.inter(
+                                          color: Colors.white,
                                           fontWeight: FontWeight.w600,
-                                          letterSpacing: -0.2,
                                         ),
                                       ),
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.shade50,
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: Text(
-                                        "RM ${amount.toStringAsFixed(2)}",
-                                        style: GoogleFonts.inter(
-                                          color: Colors.red.shade700,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: -0.3,
-                                        ),
+                                    Text(
+                                      "RM ${amount.toStringAsFixed(2)}",
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
                                     IconButton(
                                       icon: const Icon(
-                                        Icons.check_circle,
-                                        size: 20,
+                                        Icons.check_circle_outline,
+                                        size: 21,
                                       ),
-                                      color: Colors.green,
+                                      color: Colors.white,
                                       tooltip: "Mark all as paid",
                                       onPressed: () =>
                                           _markAllDebtsAsPaidForFriend(
@@ -295,7 +379,7 @@ class GroupDetailsScreen extends StatelessWidget {
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         );
                       },
@@ -305,6 +389,29 @@ class GroupDetailsScreen extends StatelessWidget {
               ),
 
               // --- Expenses List (Inner Stream) ---
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                child: Row(
+                  children: [
+                    Text(
+                      "Expense history",
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      "Newest first",
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
@@ -320,14 +427,52 @@ class GroupDetailsScreen extends StatelessWidget {
                     }
                     if (!expenseSnapshot.hasData ||
                         expenseSnapshot.data!.docs.isEmpty) {
-                      return const Center(
-                        child: Text("No expenses yet. Tap + to add one."),
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primaryContainer,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.receipt_long_outlined,
+                                  size: 32,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                "No expenses yet",
+                                style: GoogleFonts.inter(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                "Add your first shared cost to start tracking who owes you.",
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     }
 
                     final expenses = expenseSnapshot.data!.docs;
 
                     return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 100),
                       itemCount: expenses.length,
                       itemBuilder: (context, index) {
                         final expense = expenses[index];
@@ -343,9 +488,9 @@ class GroupDetailsScreen extends StatelessWidget {
                             (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
                         final double serviceAmount =
                             (data['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-                        final double totalWithCharges =
+                        double totalWithCharges =
                             (data['totalWithCharges'] as num?)?.toDouble() ??
-                            (totalAmount + taxAmount + serviceAmount);
+                            0.0;
                         bool allPaid = true;
 
                         if (hasDebts) {
@@ -380,21 +525,48 @@ class GroupDetailsScreen extends StatelessWidget {
                           ];
                         }
 
+                        if (totalWithCharges <= 0) {
+                          totalWithCharges =
+                              totalAmount + taxAmount + serviceAmount;
+                        }
+
                         return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 0,
+                          color: allPaid
+                              ? colorScheme.surfaceContainerLow
+                              : colorScheme.surface,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(color: colorScheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          elevation: 2,
-                          color: allPaid ? Colors.grey.shade100 : null,
+                          clipBehavior: Clip.antiAlias,
                           child: ExpansionTile(
+                            tilePadding: const EdgeInsets.fromLTRB(
+                              14,
+                              6,
+                              10,
+                              6,
+                            ),
+                            childrenPadding: const EdgeInsets.fromLTRB(
+                              10,
+                              0,
+                              10,
+                              10,
+                            ),
+                            shape: const Border(),
+                            collapsedShape: const Border(),
                             leading: CircleAvatar(
                               backgroundColor: allPaid
-                                  ? Colors.green.shade100
-                                  : Colors.indigo.shade100,
+                                  ? colorScheme.tertiaryContainer
+                                  : colorScheme.primaryContainer,
                               child: Icon(
-                                allPaid ? Icons.check_circle : Icons.receipt,
-                                color: allPaid ? Colors.green : Colors.indigo,
+                                allPaid
+                                    ? Icons.check_rounded
+                                    : Icons.receipt_long_outlined,
+                                color: allPaid
+                                    ? colorScheme.onTertiaryContainer
+                                    : colorScheme.onPrimaryContainer,
                               ),
                             ),
                             title: Row(
@@ -435,28 +607,20 @@ class GroupDetailsScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  "${debts.length} friend${debts.length != 1 ? 's' : ''} • Subtotal: RM ${totalAmount.toStringAsFixed(2)}",
+                                  "${debts.length} ${debts.length == 1 ? 'person' : 'people'} • ${date == null ? 'Date unavailable' : _formatDate(date)}",
                                   style: GoogleFonts.inter(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w400,
-                                    color: Colors.grey.shade600,
+                                    color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                                 if (taxAmount > 0 || serviceAmount > 0)
                                   Text(
-                                    "Tax: RM ${taxAmount.toStringAsFixed(2)} • Service: RM ${serviceAmount.toStringAsFixed(2)} • Total: RM ${totalWithCharges.toStringAsFixed(2)}",
+                                    "Includes ${_formatCharges(taxAmount, serviceAmount)}",
                                     style: GoogleFonts.inter(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w400,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                if (date != null)
-                                  Text(
-                                    _formatDate(date),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                               ],
@@ -465,8 +629,11 @@ class GroupDetailsScreen extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, size: 20),
-                                  color: Colors.blue,
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 19,
+                                  ),
+                                  color: colorScheme.onSurfaceVariant,
                                   tooltip: "Edit Expense",
                                   onPressed: () {
                                     showDialog(
@@ -496,11 +663,11 @@ class GroupDetailsScreen extends StatelessWidget {
                                     Text(
                                       "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
                                       style: GoogleFonts.inter(
-                                        fontSize: 16,
+                                        fontSize: 15,
                                         fontWeight: FontWeight.w700,
                                         color: allPaid
-                                            ? Colors.grey
-                                            : Colors.red.shade700,
+                                            ? colorScheme.onSurfaceVariant
+                                            : colorScheme.primary,
                                         letterSpacing: -0.3,
                                       ),
                                     ),
@@ -552,11 +719,21 @@ class GroupDetailsScreen extends StatelessWidget {
 
                               return ListTile(
                                 dense: true,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                tileColor: colorScheme.surfaceContainerLow,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 2,
+                                ),
                                 leading: Icon(
                                   paid
                                       ? Icons.check_circle
                                       : Icons.person_outline,
-                                  color: paid ? Colors.green : Colors.grey,
+                                  color: paid
+                                      ? colorScheme.tertiary
+                                      : colorScheme.onSurfaceVariant,
                                   size: 20,
                                 ),
                                 title: Text(
@@ -579,8 +756,8 @@ class GroupDetailsScreen extends StatelessWidget {
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: paid
-                                            ? Colors.grey
-                                            : Colors.red.shade700,
+                                            ? colorScheme.onSurfaceVariant
+                                            : colorScheme.primary,
                                       ),
                                     ),
                                     if (!paid)
@@ -589,7 +766,7 @@ class GroupDetailsScreen extends StatelessWidget {
                                           Icons.check_circle_outline,
                                           size: 18,
                                         ),
-                                        color: Colors.green,
+                                        color: colorScheme.tertiary,
                                         tooltip: "Mark as Paid",
                                         onPressed: () => _markDebtAsPaid(
                                           context,
@@ -644,6 +821,17 @@ class GroupDetailsScreen extends StatelessWidget {
     } else {
       return "${date.day}/${date.month}/${date.year}";
     }
+  }
+
+  String _formatCharges(double taxAmount, double serviceAmount) {
+    final charges = <String>[];
+    if (taxAmount > 0) {
+      charges.add("RM ${taxAmount.toStringAsFixed(2)} tax");
+    }
+    if (serviceAmount > 0) {
+      charges.add("RM ${serviceAmount.toStringAsFixed(2)} service");
+    }
+    return charges.join(" + ");
   }
 
   Future<void> _markDebtAsPaid(
@@ -859,19 +1047,37 @@ class ManageFriendsDialog extends StatefulWidget {
 
 class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
   final _nameController = TextEditingController();
+  late final List<String> _friends;
+  final Set<String> _removingFriends = {};
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _friends = widget.currentFriends
+        .map((friend) => friend.toString().trim())
+        .where((friend) => friend.isNotEmpty)
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
 
   Future<void> _addFriend() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
 
-    // Check strict duplicates
-    if (widget.currentFriends.contains(name)) {
+    if (_friends.any((friend) => friend.toLowerCase() == name.toLowerCase())) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Friend already exists!")));
       return;
     }
 
+    setState(() => _isSaving = true);
     try {
       await FirebaseFirestore.instance
           .collection('groups')
@@ -879,15 +1085,24 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
           .update({
             'friends': FieldValue.arrayUnion([name]),
           });
+      if (!mounted) return;
+      setState(() => _friends.add(name));
       _nameController.clear();
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<void> _removeFriend(String friendName) async {
+    if (_removingFriends.contains(friendName)) return;
+    setState(() => _removingFriends.add(friendName));
+
     try {
       await FirebaseFirestore.instance
           .collection('groups')
@@ -895,69 +1110,204 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
           .update({
             'friends': FieldValue.arrayRemove([friendName]),
           });
+      if (!mounted) return;
+      setState(() => _friends.remove(friendName));
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _removingFriends.remove(friendName));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final mediaQuery = MediaQuery.of(context);
+    final availableHeight =
+        mediaQuery.size.height - mediaQuery.viewInsets.bottom;
+    final listHeight = (availableHeight * 0.36).clamp(120.0, 280.0);
+    final compactLayout = availableHeight < 560;
+
     return AlertDialog(
-      title: const Text("Manage Friends"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: compactLayout ? 8 : 24,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      title: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: "Friend Name (e.g. John)",
-                  ),
-                  textCapitalization: TextCapitalization.words,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add_circle, color: Colors.indigo),
-                onPressed: _addFriend,
-              ),
-            ],
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.group_outlined,
+              color: colorScheme.onPrimaryContainer,
+            ),
           ),
-          const SizedBox(height: 10),
-          const Divider(),
-          SizedBox(
-            height: 200,
-            width: double.maxFinite,
-            child: widget.currentFriends.isEmpty
-                ? const Center(child: Text("No friends added yet"))
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: widget.currentFriends.length,
-                    itemBuilder: (context, index) {
-                      final friend = widget.currentFriends[index];
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.person),
-                        title: Text(friend.toString()),
-                        trailing: IconButton(
-                          icon: const Icon(
-                            Icons.delete,
-                            color: Colors.red,
-                            size: 20,
-                          ),
-                          onPressed: () => _removeFriend(friend.toString()),
-                        ),
-                      );
-                    },
-                  ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Manage friends",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  "Add or remove people",
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
           ),
         ],
       ),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              autofocus: _friends.isEmpty,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) {
+                if (!_isSaving) _addFriend();
+              },
+              decoration: InputDecoration(
+                labelText: "Friend's name",
+                hintText: "e.g. Alex",
+                prefixIcon: const Icon(Icons.person_add_alt_1),
+                border: const OutlineInputBorder(),
+                suffixIcon: _isSaving
+                    ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        onPressed: _addFriend,
+                        icon: const Icon(Icons.arrow_forward),
+                        tooltip: "Add friend",
+                      ),
+              ),
+            ),
+            SizedBox(height: compactLayout ? 10 : 18),
+            Row(
+              children: [
+                const Text(
+                  "Friends",
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    "${_friends.length}",
+                    style: TextStyle(
+                      color: colorScheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: listHeight,
+              width: double.maxFinite,
+              child: _friends.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.group_add_outlined,
+                            size: 36,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 10),
+                          const Text("No friends added yet"),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: _friends.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final friend = _friends[index];
+                        return ListTile(
+                          tileColor: colorScheme.surfaceContainerLow,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: colorScheme.primaryContainer,
+                            foregroundColor: colorScheme.onPrimaryContainer,
+                            child: Text(friend[0].toUpperCase()),
+                          ),
+                          title: Text(
+                            friend,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          trailing: _removingFriends.contains(friend)
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: Icon(
+                                    Icons.delete_outline,
+                                    color: colorScheme.error,
+                                  ),
+                                  tooltip: "Remove $friend",
+                                  onPressed: () => _removeFriend(friend),
+                                ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
       actions: [
-        TextButton(
+        FilledButton(
           onPressed: () => Navigator.pop(context),
           child: const Text("Done"),
         ),
@@ -1006,6 +1356,33 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.friends.isNotEmpty) {
+      _debts.add(DebtEntry(friendName: ''));
+      _amountControllers[0] = TextEditingController();
+      _descriptionControllers[0] = TextEditingController();
+    }
+  }
+
+  double _numberFrom(TextEditingController? controller) {
+    return double.tryParse(controller?.text.trim() ?? '') ?? 0;
+  }
+
+  double get _previewSubtotal => _amountControllers.values.fold(
+    0,
+    (total, controller) => total + _numberFrom(controller),
+  );
+
+  double get _previewTax =>
+      _previewSubtotal * _numberFrom(_taxPercentController) / 100;
+
+  double get _previewService =>
+      _previewSubtotal * _numberFrom(_servicePercentController) / 100;
+
+  String _currency(double value) => 'RM ${value.toStringAsFixed(2)}';
 
   @override
   void dispose() {
@@ -1216,209 +1593,410 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (widget.friends.isEmpty) {
       return AlertDialog(
-        title: const Text("Add Expense"),
+        icon: Icon(Icons.group_add_outlined, color: colorScheme.primary),
+        title: const Text("Add a friend first"),
         content: const Text(
-          "Please add at least one friend first in the Manage Friends section.",
+          "Add someone in Manage Friends before creating an expense.",
+          textAlign: TextAlign.center,
         ),
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
+            child: const Text("Got it"),
           ),
         ],
       );
     }
 
+    final previewTotal = _previewSubtotal + _previewTax + _previewService;
+
     return AlertDialog(
-      title: const Text("Add Expense"),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: "Expense Description",
-                hintText: "e.g. Dinner, Movie tickets",
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      title: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.receipt_long_outlined,
+              color: colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Add expense",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  "Record a shared cost",
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _isLoading ? null : () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+            tooltip: "Close",
+          ),
+        ],
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 520,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: "What was it for?",
+                  hintText: "Dinner, movie tickets, groceries...",
+                  prefixIcon: Icon(Icons.edit_note_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
               ),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _taxPercentController,
-                    decoration: const InputDecoration(
-                      labelText: "Tax % (optional)",
-                      hintText: "e.g. 6",
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+              const SizedBox(height: 24),
+              const Text(
+                "Additional charges",
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Applied proportionally to every person's share.",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _taxPercentController,
+                      decoration: const InputDecoration(
+                        labelText: "Tax",
+                        hintText: "0",
+                        suffixText: "%",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _servicePercentController,
-                    decoration: const InputDecoration(
-                      labelText: "Service % (optional)",
-                      hintText: "e.g. 10",
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _servicePercentController,
+                      decoration: const InputDecoration(
+                        labelText: "Service",
+                        hintText: "0",
+                        suffixText: "%",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Who Owes You?",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                TextButton.icon(
-                  onPressed: _addDebtEntry,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text("Add Friend"),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_debts.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Center(
-                  child: Text(
-                    "Tap 'Add Friend' to add someone who owes you",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              )
-            else
-              ...List.generate(_debts.length, (index) {
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: _debts[index].friendName.isEmpty
-                                    ? null
-                                    : _debts[index].friendName,
-                                decoration: const InputDecoration(
-                                  labelText: "Friend",
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 16,
-                                  ),
-                                ),
-                                items: widget.friends
-                                    .map<DropdownMenuItem<String>>((
-                                      dynamic value,
-                                    ) {
-                                      return DropdownMenuItem<String>(
-                                        value: value.toString(),
-                                        child: Text(value.toString()),
-                                      );
-                                    })
-                                    .toList(),
-                                onChanged: (String? newValue) {
-                                  setState(() {
-                                    _debts[index].friendName = newValue ?? '';
-                                  });
-                                },
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeDebtEntry(index),
-                              tooltip: "Remove",
-                            ),
-                          ],
+                        Text(
+                          "Who owes you?",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _amountControllers[index] ??=
-                              TextEditingController(text: _debts[index].amount),
-                          decoration: const InputDecoration(
-                            labelText: "Base amount (before tax/service)",
-                            prefixText: "RM ",
-                            hintText: "0.00",
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          onChanged: (value) {
-                            _debts[index].amount = value;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _descriptionControllers[index] ??=
-                              TextEditingController(
-                                text: _debts[index].description,
-                              ),
-                          decoration: const InputDecoration(
-                            labelText: "Description (optional)",
-                            hintText: "e.g. Their share of dinner",
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          textCapitalization: TextCapitalization.sentences,
-                          onChanged: (value) {
-                            _debts[index].description = value;
-                          },
+                        SizedBox(height: 3),
+                        Text(
+                          "Add each person's individual share",
+                          style: TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
-                );
-              }),
-          ],
+                  FilledButton.tonalIcon(
+                    onPressed: _addDebtEntry,
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text("Add"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_debts.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 28,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.group_outlined),
+                      SizedBox(height: 8),
+                      Text("No shares added yet"),
+                    ],
+                  ),
+                )
+              else
+                ...List.generate(_debts.length, (index) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 0,
+                    color: colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.secondaryContainer,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  "${index + 1}",
+                                  style: TextStyle(
+                                    color: colorScheme.onSecondaryContainer,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  "Share ${index + 1}",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(
+                                  Icons.delete_outline,
+                                  color: colorScheme.error,
+                                ),
+                                onPressed: () => _removeDebtEntry(index),
+                                tooltip: "Remove share",
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey(
+                                    "friend-$index-${_debts[index].friendName}",
+                                  ),
+                                  initialValue: _debts[index].friendName.isEmpty
+                                      ? null
+                                      : _debts[index].friendName,
+                                  decoration: const InputDecoration(
+                                    labelText: "Friend",
+                                    prefixIcon: Icon(Icons.person_outline),
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 16,
+                                    ),
+                                  ),
+                                  items: widget.friends
+                                      .map<DropdownMenuItem<String>>((
+                                        dynamic value,
+                                      ) {
+                                        return DropdownMenuItem<String>(
+                                          value: value.toString(),
+                                          child: Text(value.toString()),
+                                        );
+                                      })
+                                      .toList(),
+                                  onChanged: (String? newValue) {
+                                    setState(() {
+                                      _debts[index].friendName = newValue ?? '';
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _amountControllers[index] ??=
+                                TextEditingController(
+                                  text: _debts[index].amount,
+                                ),
+                            decoration: const InputDecoration(
+                              labelText: "Base amount",
+                              prefixText: "RM ",
+                              hintText: "0.00",
+                              helperText: "Before tax and service",
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (value) {
+                              _debts[index].amount = value;
+                              setState(() {});
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _descriptionControllers[index] ??=
+                                TextEditingController(
+                                  text: _debts[index].description,
+                                ),
+                            decoration: const InputDecoration(
+                              labelText: "Note (optional)",
+                              hintText: "Their share of dinner",
+                              prefixIcon: Icon(Icons.notes_outlined),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            onChanged: (value) {
+                              _debts[index].description = value;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  children: [
+                    _ExpensePreviewRow(
+                      label: "Subtotal",
+                      value: _currency(_previewSubtotal),
+                    ),
+                    const SizedBox(height: 8),
+                    _ExpensePreviewRow(
+                      label: "Tax & service",
+                      value: _currency(_previewTax + _previewService),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Divider(height: 1),
+                    ),
+                    _ExpensePreviewRow(
+                      label: "Total to collect",
+                      value: _currency(previewTotal),
+                      emphasized: true,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: const Text("Cancel"),
         ),
-        if (_isLoading)
-          const CircularProgressIndicator()
-        else
-          ElevatedButton(
-            onPressed: _saveExpense,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Save"),
+        FilledButton.icon(
+          onPressed: _isLoading ? null : _saveExpense,
+          icon: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_circle_outline),
+          label: Text(_isLoading ? "Saving..." : "Save expense"),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExpensePreviewRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasized;
+
+  const _ExpensePreviewRow({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: emphasized ? 16 : 14,
+      fontWeight: emphasized ? FontWeight.w700 : FontWeight.w500,
+    );
+
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: style)),
+        Text(value, style: style),
       ],
     );
   }
@@ -1460,6 +2038,21 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
+
+  double _numberFrom(TextEditingController? controller) {
+    return double.tryParse(controller?.text.trim() ?? '') ?? 0;
+  }
+
+  double get _previewSubtotal => _amountControllers.values.fold(
+    0,
+    (total, controller) => total + _numberFrom(controller),
+  );
+
+  double get _previewCharges =>
+      _previewSubtotal *
+      (_numberFrom(_taxPercentController) +
+          _numberFrom(_servicePercentController)) /
+      100;
 
   @override
   void initState() {
@@ -1718,6 +2311,8 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (widget.friends.isEmpty) {
       return AlertDialog(
         title: const Text("Edit Expense"),
@@ -1733,181 +2328,347 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
       );
     }
 
+    final previewTotal = _previewSubtotal + _previewCharges;
+
     return AlertDialog(
-      title: const Text("Edit Expense"),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: "Expense Description",
-                hintText: "e.g. Dinner, Movie tickets",
-              ),
-              textCapitalization: TextCapitalization.sentences,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      title: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Icon(
+              Icons.edit_note_outlined,
+              color: colorScheme.onSecondaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Who Owes You?",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                Text(
+                  "Edit expense",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                 ),
-                TextButton.icon(
-                  onPressed: _addDebtEntry,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text("Add Friend"),
+                SizedBox(height: 2),
+                Text(
+                  "Update the expense and its shares",
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            if (_debts.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
+          ),
+          IconButton(
+            onPressed: _isLoading ? null : () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 520,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: "What was it for?",
+                  hintText: "Dinner, movie tickets, groceries...",
+                  prefixIcon: Icon(Icons.edit_note_outlined),
+                  border: OutlineInputBorder(),
                 ),
-                child: const Center(
-                  child: Text(
-                    "Tap 'Add Friend' to add someone who owes you",
-                    style: TextStyle(color: Colors.grey),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "Additional charges",
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _taxPercentController,
+                      decoration: const InputDecoration(
+                        labelText: "Tax",
+                        hintText: "0",
+                        suffixText: "%",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
                   ),
-                ),
-              )
-            else
-              ...List.generate(_debts.length, (index) {
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _servicePercentController,
+                      decoration: const InputDecoration(
+                        labelText: "Service",
+                        hintText: "0",
+                        suffixText: "%",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: _debts[index].friendName.isEmpty
-                                    ? null
-                                    : _debts[index].friendName,
-                                decoration: const InputDecoration(
-                                  labelText: "Friend",
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 16,
-                                  ),
-                                ),
-                                items: widget.friends
-                                    .map<DropdownMenuItem<String>>((
-                                      dynamic value,
-                                    ) {
-                                      return DropdownMenuItem<String>(
-                                        value: value.toString(),
-                                        child: Text(value.toString()),
-                                      );
-                                    })
-                                    .toList(),
-                                onChanged: (String? newValue) {
-                                  setState(() {
-                                    _debts[index].friendName = newValue ?? '';
-                                  });
-                                },
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeDebtEntry(index),
-                              tooltip: "Remove",
-                            ),
-                          ],
+                        Text(
+                          "Who owes you?",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _amountControllers[index] ??=
-                              TextEditingController(text: _debts[index].amount),
-                          decoration: const InputDecoration(
-                            labelText: "Base amount (before tax/service)",
-                            prefixText: "RM ",
-                            hintText: "0.00",
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          onChanged: (value) {
-                            _debts[index].amount = value;
-                          },
+                        SizedBox(height: 3),
+                        Text(
+                          "Paid shares keep their current status",
+                          style: TextStyle(fontSize: 13),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _descriptionControllers[index] ??=
-                              TextEditingController(
-                                text: _debts[index].description,
-                              ),
-                          decoration: const InputDecoration(
-                            labelText: "Description (optional)",
-                            hintText: "e.g. Their share of dinner",
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          textCapitalization: TextCapitalization.sentences,
-                          onChanged: (value) {
-                            _debts[index].description = value;
-                          },
-                        ),
-                        if (_debts[index].paid)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle,
-                                  color: Colors.green,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "This debt is marked as paid",
-                                  style: TextStyle(
-                                    color: Colors.green.shade700,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                       ],
                     ),
                   ),
-                );
-              }),
-          ],
+                  FilledButton.tonalIcon(
+                    onPressed: _addDebtEntry,
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text("Add"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_debts.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      "Tap 'Add Friend' to add someone who owes you",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ...List.generate(_debts.length, (index) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey(
+                                    "edit-friend-$index-${_debts[index].friendName}",
+                                  ),
+                                  initialValue: _debts[index].friendName.isEmpty
+                                      ? null
+                                      : _debts[index].friendName,
+                                  decoration: const InputDecoration(
+                                    labelText: "Friend",
+                                    prefixIcon: Icon(Icons.person_outline),
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 16,
+                                    ),
+                                  ),
+                                  items: widget.friends
+                                      .map<DropdownMenuItem<String>>((
+                                        dynamic value,
+                                      ) {
+                                        return DropdownMenuItem<String>(
+                                          value: value.toString(),
+                                          child: Text(value.toString()),
+                                        );
+                                      })
+                                      .toList(),
+                                  onChanged: (String? newValue) {
+                                    setState(() {
+                                      _debts[index].friendName = newValue ?? '';
+                                    });
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.delete_outline,
+                                  color: colorScheme.error,
+                                ),
+                                onPressed: () => _removeDebtEntry(index),
+                                tooltip: "Remove",
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _amountControllers[index] ??=
+                                TextEditingController(
+                                  text: _debts[index].amount,
+                                ),
+                            decoration: const InputDecoration(
+                              labelText: "Base amount (before tax/service)",
+                              prefixText: "RM ",
+                              hintText: "0.00",
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (value) {
+                              _debts[index].amount = value;
+                              setState(() {});
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _descriptionControllers[index] ??=
+                                TextEditingController(
+                                  text: _debts[index].description,
+                                ),
+                            decoration: const InputDecoration(
+                              labelText: "Note (optional)",
+                              hintText: "Their share of dinner",
+                              prefixIcon: Icon(Icons.notes_outlined),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            onChanged: (value) {
+                              _debts[index].description = value;
+                            },
+                          ),
+                          if (_debts[index].paid)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.tertiaryContainer,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_outline,
+                                      color: colorScheme.onTertiaryContainer,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      "This debt is marked as paid",
+                                      style: TextStyle(
+                                        color: colorScheme.onTertiaryContainer,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  children: [
+                    _ExpensePreviewRow(
+                      label: "Subtotal",
+                      value: "RM ${_previewSubtotal.toStringAsFixed(2)}",
+                    ),
+                    const SizedBox(height: 8),
+                    _ExpensePreviewRow(
+                      label: "Tax & service",
+                      value: "RM ${_previewCharges.toStringAsFixed(2)}",
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Divider(height: 1),
+                    ),
+                    _ExpensePreviewRow(
+                      label: "Updated total",
+                      value: "RM ${previewTotal.toStringAsFixed(2)}",
+                      emphasized: true,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: const Text("Cancel"),
         ),
-        if (_isLoading)
-          const CircularProgressIndicator()
-        else
-          ElevatedButton(
-            onPressed: _updateExpense,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Update"),
+        FilledButton.icon(
+          onPressed: _isLoading ? null : _updateExpense,
+          icon: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save_outlined),
+          label: Text(_isLoading ? "Updating..." : "Update expense"),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           ),
+        ),
       ],
     );
   }

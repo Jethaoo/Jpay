@@ -11,9 +11,7 @@ import 'profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const JpayApp());
 }
 
@@ -92,9 +90,9 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? "Auth failed")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? "Auth failed")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -108,10 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Colors.indigo.shade400,
-              Colors.indigo.shade600,
-            ],
+            colors: [Colors.indigo.shade400, Colors.indigo.shade600],
           ),
         ),
         child: SafeArea(
@@ -222,7 +217,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 child: const Text(
                                   "Log In",
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -246,8 +244,22 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 /// 3. HOME SCREEN (DASHBOARD)
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,9 +308,7 @@ class HomeScreen extends StatelessWidget {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ProfileScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
               );
             },
           ),
@@ -311,104 +321,43 @@ class HomeScreen extends StatelessWidget {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('groups')
-              .where('createdBy', isEqualTo: user?.uid) 
+              .where('createdBy', isEqualTo: user?.uid)
               .orderBy('createdAt', descending: true)
               .snapshots(),
           builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
-          }
+            if (snapshot.hasError) {
+              return Center(child: Text("Error: ${snapshot.error}"));
+            }
 
-          final groups = snapshot.data?.docs ?? [];
-          
-          // Calculate totals
-          double totalOwed = 0.0;
-          int totalFriends = 0;
-          
-          for (var group in groups) {
-            totalOwed += (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
-            totalFriends += (group['friends'] as List?)?.length ?? 0;
-          }
+            final groups = snapshot.data?.docs ?? [];
+            final filteredGroups = groups.where((group) {
+              final name = (group['name'] as String? ?? '').toLowerCase();
+              return name.contains(_searchQuery.toLowerCase());
+            }).toList();
 
-          return SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Search Bar
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: "Search for ledgers",
-                        prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                    ),
-                  ),
-                ),
-                
-                // Summary Cards
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _SummaryCard(
-                          title: "Total Owed",
-                          amount: totalOwed,
-                          icon: Icons.arrow_downward,
-                          color: Colors.red,
-                          isExpense: true,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SummaryCard(
-                          title: "Active Ledgers",
-                          amount: groups.length.toDouble(),
-                          icon: Icons.account_balance_wallet,
-                          color: Colors.green,
-                          isExpense: false,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 16),
-                
-                // Safe to Spend / Summary Circle
-                if (groups.isNotEmpty)
+            // Calculate totals
+            double totalOwed = 0.0;
+
+            for (var group in groups) {
+              totalOwed += (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
+            }
+
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Search Bar
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.all(16),
                     child: Container(
-                      padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.05),
@@ -417,156 +366,172 @@ class HomeScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            width: 150,
-                            height: 150,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 150,
-                                  height: 150,
-                                  child: CircularProgressIndicator(
-                                    value: totalOwed > 0 ? 0.7 : 1.0,
-                                    strokeWidth: 12,
-                                    backgroundColor: Colors.grey.shade200,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      totalOwed > 0 ? Colors.orange : Colors.green,
-                                    ),
-                                  ),
-                                ),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      "RM ${totalOwed.toStringAsFixed(0)}",
-                                      style: GoogleFonts.inter(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87,
-                                        letterSpacing: -0.5,
-                                      ),
-                                    ),
-                                    Text(
-                                      "Outstanding",
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setState(() => _searchQuery = value.trim());
+                        },
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: "Search for ledgers",
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: Colors.grey,
                           ),
-                          const SizedBox(height: 16),
-                          Text(
-                            "${groups.length} Ledger${groups.length != 1 ? 's' : ''} • $totalFriends Friend${totalFriends != 1 ? 's' : ''}",
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.grey.shade600,
-                            ),
+                          suffixIcon: _searchQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                  icon: const Icon(Icons.close),
+                                  tooltip: "Clear search",
+                                ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
                           ),
-                        ],
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                
-                const SizedBox(height: 24),
-                
-                // Recent Ledgers Section
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Text(
-                        "My Ledgers",
-                        style: GoogleFonts.inter(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        "Updated ${_formatUpdateTime(DateTime.now())}",
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 12),
-                
-                if (groups.isEmpty)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(48),
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: Colors.indigo.shade50,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.account_balance_wallet_outlined,
-                              size: 64,
-                              color: Colors.indigo.shade300,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            "No ledgers yet",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            "Create your first ledger to start\ntracking expenses with friends",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  ...groups.map((group) {
-                    final groupName = group['name'] as String? ?? '';
-                    final totalOwed = (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
-                    final friends = List.from(group['friends'] ?? []);
-                    
-                    return _LedgerCard(
-                      groupId: group.id,
-                      groupName: groupName,
-                      totalOwed: totalOwed,
-                      friends: friends,
-                    );
-                  }).toList(),
-                
-                const SizedBox(height: 100), // Space for FAB
-              ],
-            ),
-          );
 
-        },
+                  // Summary Cards
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _SummaryCard(
+                            title: "Total Owed",
+                            amount: totalOwed,
+                            icon: Icons.arrow_downward,
+                            color: Colors.red,
+                            isExpense: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _SummaryCard(
+                            title: "Active Ledgers",
+                            amount: groups.length.toDouble(),
+                            icon: Icons.account_balance_wallet,
+                            color: Colors.green,
+                            isExpense: false,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Recent Ledgers Section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Text(
+                          _searchQuery.isEmpty
+                              ? "My Ledgers"
+                              : "Search results",
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? "Updated ${_formatUpdateTime(DateTime.now())}"
+                              : "${filteredGroups.length} found",
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  if (filteredGroups.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(48),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.shade50,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _searchQuery.isEmpty
+                                    ? Icons.account_balance_wallet_outlined
+                                    : Icons.search_off_outlined,
+                                size: 64,
+                                color: Colors.indigo.shade300,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              _searchQuery.isEmpty
+                                  ? "No ledgers yet"
+                                  : "No matching ledgers",
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _searchQuery.isEmpty
+                                  ? "Create your first ledger to start\ntracking expenses with friends"
+                                  : "Try a different name or clear your search.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ...filteredGroups.map((group) {
+                      final groupName = group['name'] as String? ?? '';
+                      final totalOwed =
+                          (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
+                      final friends = List.from(group['friends'] ?? []);
+
+                      return _LedgerCard(
+                        groupId: group.id,
+                        groupName: groupName,
+                        totalOwed: totalOwed,
+                        friends: friends,
+                      );
+                    }).toList(),
+
+                  const SizedBox(height: 100), // Space for FAB
+                ],
+              ),
+            );
+          },
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -587,8 +552,18 @@ class HomeScreen extends StatelessWidget {
 
   String _getMonthName(int month) {
     const months = [
-      'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
-      'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+      'JANUARY',
+      'FEBRUARY',
+      'MARCH',
+      'APRIL',
+      'MAY',
+      'JUNE',
+      'JULY',
+      'AUGUST',
+      'SEPTEMBER',
+      'OCTOBER',
+      'NOVEMBER',
+      'DECEMBER',
     ];
     return months[month - 1];
   }
@@ -596,7 +571,7 @@ class HomeScreen extends StatelessWidget {
   String _formatUpdateTime(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays == 0) {
       return 'today';
     } else if (difference.inDays == 1) {
@@ -670,7 +645,7 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            isExpense 
+            isExpense
                 ? "RM ${amount.toStringAsFixed(2)}"
                 : amount.toInt().toString(),
             style: GoogleFonts.inter(
@@ -722,10 +697,8 @@ class _LedgerCard extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => GroupDetailsScreen(
-                  groupId: groupId,
-                  groupName: groupName,
-                ),
+                builder: (context) =>
+                    GroupDetailsScreen(groupId: groupId, groupName: groupName),
               ),
             );
           },
@@ -739,10 +712,7 @@ class _LedgerCard extends StatelessWidget {
                   height: 56,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        Colors.indigo.shade400,
-                        Colors.indigo.shade600,
-                      ],
+                      colors: [Colors.indigo.shade400, Colors.indigo.shade600],
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -798,13 +768,13 @@ class _LedgerCard extends StatelessWidget {
                   children: [
                     if (totalOwed > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [
-                              Colors.red.shade400,
-                              Colors.red.shade600,
-                            ],
+                            colors: [Colors.red.shade400, Colors.red.shade600],
                           ),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -820,19 +790,22 @@ class _LedgerCard extends StatelessWidget {
                       )
                     else
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.shade50,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                          child: Text(
-                            "All paid",
-                            style: GoogleFonts.inter(
-                              color: Colors.green.shade700,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
+                        child: Text(
+                          "All paid",
+                          style: GoogleFonts.inter(
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
                           ),
+                        ),
                       ),
                     const SizedBox(height: 4),
                     Icon(
@@ -862,16 +835,31 @@ class CreateGroupDialog extends StatefulWidget {
 class _CreateGroupDialogState extends State<CreateGroupDialog> {
   final _nameController = TextEditingController();
   bool _isLoading = false;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
 
   Future<void> _createGroup() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      setState(() => _errorText = "Enter a name for your ledger");
+      return;
+    }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _errorText = null;
+      _isLoading = true;
+    });
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        throw StateError("You need to sign in before creating a ledger.");
+      }
 
       // Create ledger with empty friends list
       await FirebaseFirestore.instance.collection('groups').add({
@@ -884,7 +872,11 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
 
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -892,56 +884,122 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return AlertDialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      title: const Row(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      title: Row(
         children: [
-          Icon(Icons.add_circle_outline, color: Colors.indigo),
-          SizedBox(width: 8),
-          Text(
-            "New Ledger",
-            style: TextStyle(fontWeight: FontWeight.bold),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.account_balance_wallet_outlined,
+              color: colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "New ledger",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  "Create a space for shared expenses",
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _isLoading ? null : () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
           ),
         ],
       ),
-      content: TextField(
-        controller: _nameController,
-        autofocus: true,
-        textCapitalization: TextCapitalization.sentences,
-        decoration: InputDecoration(
-          hintText: "e.g. John's Expenses",
-          prefixIcon: const Icon(Icons.account_balance_wallet_outlined),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          filled: true,
-          fillColor: Colors.grey.shade50,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Cancel"),
-        ),
-        if (_isLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: CircularProgressIndicator(),
-          )
-        else
-          ElevatedButton(
-            onPressed: _createGroup,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) {
+                if (_errorText != null) setState(() => _errorText = null);
+              },
+              onSubmitted: (_) {
+                if (!_isLoading) _createGroup();
+              },
+              decoration: InputDecoration(
+                labelText: "Ledger name",
+                hintText: "e.g. Penang trip",
+                errorText: _errorText,
+                prefixIcon: const Icon(Icons.edit_outlined),
+                border: const OutlineInputBorder(),
               ),
             ),
-            child: const Text("Create"),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      "You can add friends and expenses after creating it.",
+                      style: TextStyle(fontSize: 13, height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        FilledButton.icon(
+          onPressed: _isLoading ? null : _createGroup,
+          icon: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add),
+          label: Text(_isLoading ? "Creating..." : "Create ledger"),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           ),
+        ),
       ],
     );
   }
@@ -956,9 +1014,7 @@ class ManageGroupsScreen extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Manage Ledgers"),
-      ),
+      appBar: AppBar(title: const Text("Manage Ledgers")),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('groups')
@@ -1002,18 +1058,27 @@ class ManageGroupsScreen extends StatelessWidget {
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   leading: CircleAvatar(
                     backgroundColor: Colors.indigo,
                     foregroundColor: Colors.white,
                     child: Text(groupName[0].toUpperCase()),
                   ),
-                  title: Text(groupName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text("${friends.length} friend${friends.length != 1 ? 's' : ''} • Owed: RM ${totalOwed.toStringAsFixed(2)}"),
+                  title: Text(
+                    groupName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    "${friends.length} friend${friends.length != 1 ? 's' : ''} • Owed: RM ${totalOwed.toStringAsFixed(2)}",
+                  ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     tooltip: "Delete Ledger",
-                    onPressed: () => _showDeleteConfirmation(context, group.id, groupName),
+                    onPressed: () =>
+                        _showDeleteConfirmation(context, group.id, groupName),
                   ),
                 ),
               );
@@ -1024,12 +1089,18 @@ class ManageGroupsScreen extends StatelessWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, String groupId, String groupName) {
+  void _showDeleteConfirmation(
+    BuildContext context,
+    String groupId,
+    String groupName,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Delete Ledger"),
-        content: Text("Are you sure you want to delete \"$groupName\"? This will also delete all expenses in this ledger. This action cannot be undone."),
+        content: Text(
+          "Are you sure you want to delete \"$groupName\"? This will also delete all expenses in this ledger. This action cannot be undone.",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -1058,15 +1129,17 @@ class ManageGroupsScreen extends StatelessWidget {
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
-      
+
       // Delete all expenses
       for (var expense in expensesSnapshot.docs) {
         batch.delete(expense.reference);
       }
-      
+
       // Delete the group itself
-      batch.delete(FirebaseFirestore.instance.collection('groups').doc(groupId));
-      
+      batch.delete(
+        FirebaseFirestore.instance.collection('groups').doc(groupId),
+      );
+
       await batch.commit();
 
       if (context.mounted) {
@@ -1078,9 +1151,9 @@ class ManageGroupsScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         Navigator.of(context).pop(); // Close confirmation dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error deleting ledger: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error deleting ledger: $e")));
       }
     }
   }

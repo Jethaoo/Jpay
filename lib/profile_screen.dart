@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -38,10 +39,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
 
     final data = doc.data();
-    _displayNameController.text =
-        data != null && data['displayName'] is String ? data['displayName'] as String : '';
-    _photoUrl =
-        data != null && data['photoUrl'] is String ? data['photoUrl'] as String : null;
+    _displayNameController.text = data != null && data['displayName'] is String
+        ? data['displayName'] as String
+        : '';
+    _photoUrl = data != null && data['photoUrl'] is String
+        ? data['photoUrl'] as String
+        : null;
     setState(() {});
   }
 
@@ -79,25 +82,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             contentType: 'image/jpeg',
             cacheControl: 'max-age=3600',
           );
-          
+
           // Upload the file
           await storageRef.putFile(_imageFile!, metadata);
-          
+
           // Get download URL after successful upload
           downloadUrl = await storageRef.getDownloadURL();
-          
         } catch (uploadError) {
           // If upload fails, show specific error with helpful message
           if (!mounted) return;
-          
+
           String errorMessage = 'Error uploading image: $uploadError';
-          if (uploadError.toString().contains('permission') || 
+          if (uploadError.toString().contains('permission') ||
               uploadError.toString().contains('object-not-found')) {
-            errorMessage += '\n\nPlease update Firebase Storage rules:\n'
+            errorMessage +=
+                '\n\nPlease update Firebase Storage rules:\n'
                 'Go to Firebase Console → Storage → Rules\n'
                 'Add rules to allow authenticated users to write to user_profile_pics/';
           }
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
@@ -110,21 +113,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Save to Firestore
       try {
-        await FirebaseFirestore.instance.collection('users').doc(_user.uid).set(
-          {
-            'displayName': _displayNameController.text.trim(),
-            if (downloadUrl != null) 'photoUrl': downloadUrl,
-          },
-          SetOptions(merge: true),
-        );
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_user.uid)
+            .set({
+              'displayName': _displayNameController.text.trim(),
+              if (downloadUrl != null) 'photoUrl': downloadUrl,
+            }, SetOptions(merge: true));
 
         _photoUrl = downloadUrl;
         _imageFile = null; // Clear the picked file after successful save
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Profile updated')));
       } catch (firestoreError) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -162,9 +165,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final email = _user.email ?? '';
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-      ),
+      appBar: AppBar(title: const Text('Profile')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -178,16 +179,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Builder(
                       builder: (context) {
-                        final hasImage = _imageFile != null || (_photoUrl != null && _photoUrl!.isNotEmpty);
+                        final hasImage =
+                            _imageFile != null ||
+                            (_photoUrl != null && _photoUrl!.isNotEmpty);
                         final imageProvider = _imageFile != null
                             ? FileImage(_imageFile!) as ImageProvider
                             : (_photoUrl != null && _photoUrl!.isNotEmpty
-                                ? NetworkImage(_photoUrl!) as ImageProvider
-                                : null);
-                        
+                                  ? NetworkImage(_photoUrl!) as ImageProvider
+                                  : null);
+
                         return CircleAvatar(
                           radius: 50,
-                          backgroundColor: Colors.indigo.shade100,
+                          backgroundColor: AppPalette.surfaceElevated,
                           backgroundImage: imageProvider,
                           onBackgroundImageError: hasImage
                               ? (exception, stackTrace) {
@@ -199,11 +202,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               : null,
                           child: !hasImage
                               ? Text(
-                                  email.isNotEmpty ? email[0].toUpperCase() : 'U',
+                                  email.isNotEmpty
+                                      ? email[0].toUpperCase()
+                                      : 'U',
                                   style: GoogleFonts.inter(
                                     fontSize: 32,
                                     fontWeight: FontWeight.w700,
-                                    color: Colors.indigo.shade700,
+                                    color: AppPalette.blue,
                                   ),
                                 )
                               : null,
@@ -216,11 +221,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.indigo,
+                          color: AppPalette.blue,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withValues(alpha: 0.2),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -254,11 +259,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               decoration: InputDecoration(
                 labelText: 'Display name',
                 prefixIcon: const Icon(Icons.person_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade50,
               ),
             ),
             const SizedBox(height: 16),
@@ -267,26 +267,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               decoration: InputDecoration(
                 labelText: 'Email',
                 prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade100,
               ),
               controller: TextEditingController(text: email),
             ),
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: FilledButton(
                 onPressed: _isSaving ? null : _saveProfile,
-                style: ElevatedButton.styleFrom(
+                style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 52),
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
                 child: _isSaving
                     ? const SizedBox(
@@ -294,7 +284,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Text(
@@ -315,10 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
               },
               icon: const Icon(Icons.logout, color: Colors.red),
-              label: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.red),
-              ),
+              label: const Text('Logout', style: TextStyle(color: Colors.red)),
             ),
           ],
         ),
@@ -326,5 +315,3 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
-
-

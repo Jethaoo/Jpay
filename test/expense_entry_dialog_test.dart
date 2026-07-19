@@ -115,7 +115,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
-            widget.decoration?.labelText == 'Total friends owe',
+            widget.decoration?.labelText == 'Subtotal before tax & service',
       ),
       '10',
     );
@@ -164,6 +164,76 @@ void main() {
 
     expect(find.text('Paid'), findsOneWidget);
     expect(_amountFields(), findsNWidgets(2));
+  });
+
+  testWidgets('edit selection preserves legacy duplicate friend rows', (
+    tester,
+  ) async {
+    await _openDialog(
+      tester,
+      () => EditExpenseDialog(
+        groupId: 'group-1',
+        expenseId: 'expense-1',
+        friends: const ['Alex', 'Blair'],
+        initialTitle: 'Legacy dinner',
+        initialDebts: const [
+          {
+            'friendName': 'Alex',
+            'baseAmount': 4.0,
+            'amount': 4.0,
+            'description': 'Starter',
+            'paid': true,
+          },
+          {
+            'friendName': 'Alex',
+            'baseAmount': 6.0,
+            'amount': 6.0,
+            'description': 'Main',
+            'paid': false,
+          },
+        ],
+        initialTaxPercent: 0,
+        initialServicePercent: 0,
+      ),
+    );
+
+    await tester.tap(find.text('Change'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Blair'));
+    await tester.pump();
+    await tester.tap(find.text('Use 2 friends'));
+    await tester.pumpAndSettle();
+
+    var fields = tester.widgetList<TextField>(_amountFields()).toList();
+    expect(fields.map((field) => field.controller!.text), ['4.00', '6.00', '']);
+    expect(find.text('Paid'), findsOneWidget);
+    expect(find.text('2 selected'), findsOneWidget);
+    await tester.tap(find.text('Edit note').first);
+    await tester.pump();
+    final noteFields = tester
+        .widgetList<TextField>(_fieldWithLabel('Note (optional)'))
+        .toList();
+    expect(noteFields.map((field) => field.controller!.text), [
+      'Starter',
+      'Main',
+    ]);
+
+    await tester.tap(find.text('Split equally'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      _fieldWithLabel('Subtotal before tax & service'),
+      '10',
+    );
+    await tester.tap(find.text('Apply split'));
+    await tester.pumpAndSettle();
+
+    fields = tester.widgetList<TextField>(_amountFields()).toList();
+    expect(fields.map((field) => field.controller!.text), [
+      '2.50',
+      '2.50',
+      '5.00',
+    ]);
+    expect(find.text('Paid'), findsOneWidget);
   });
 
   testWidgets('rejects a blank participant amount', (tester) async {

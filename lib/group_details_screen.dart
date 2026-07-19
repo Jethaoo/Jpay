@@ -1475,9 +1475,10 @@ Future<double?> _showEqualSplitPrompt(BuildContext context) async {
           controller: controller,
           autofocus: true,
           decoration: InputDecoration(
-            labelText: "Total friends owe",
+            labelText: "Subtotal before tax & service",
             prefixText: "RM ",
             hintText: "0.00",
+            helperText: "Additional charges are added afterward",
             errorText: errorText,
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1647,7 +1648,6 @@ class _ParticipantAmountCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
-      key: ValueKey("expense-participant-${debt.friendName}"),
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -2411,6 +2411,9 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
           _numberFrom(_servicePercentController)) /
       100;
 
+  int get _selectedFriendCount =>
+      _debts.map((debt) => debt.friendName).toSet().length;
+
   @override
   void initState() {
     super.initState();
@@ -2466,16 +2469,15 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   }
 
   void _syncParticipantSelection(Set<String> selected) {
-    final existingDebts = <String, DebtEntry>{};
-    final amountValues = <String, String>{};
-    final descriptionValues = <String, String>{};
+    final existingDebts = <String, List<DebtEntry>>{};
+    final amountValues = <DebtEntry, String>{};
+    final descriptionValues = <DebtEntry, String>{};
     for (var index = 0; index < _debts.length; index++) {
-      final friendName = _debts[index].friendName;
-      existingDebts[friendName] = _debts[index];
-      amountValues[friendName] =
-          _amountControllers[index]?.text ?? _debts[index].amount;
-      descriptionValues[friendName] =
-          _descriptionControllers[index]?.text ?? _debts[index].description;
+      final debt = _debts[index];
+      existingDebts.putIfAbsent(debt.friendName, () => []).add(debt);
+      amountValues[debt] = _amountControllers[index]?.text ?? debt.amount;
+      descriptionValues[debt] =
+          _descriptionControllers[index]?.text ?? debt.description;
     }
 
     final oldAmountControllers = _amountControllers.values.toList();
@@ -2487,16 +2489,18 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
       _descriptionControllers.clear();
       for (final friendName in _availableFriends) {
         if (!selected.contains(friendName)) continue;
-        final debt =
-            existingDebts[friendName] ?? DebtEntry(friendName: friendName);
-        final index = _debts.length;
-        _debts.add(debt);
-        _amountControllers[index] = TextEditingController(
-          text: amountValues[friendName] ?? debt.amount,
-        );
-        _descriptionControllers[index] = TextEditingController(
-          text: descriptionValues[friendName] ?? debt.description,
-        );
+        final debtsForFriend =
+            existingDebts[friendName] ?? [DebtEntry(friendName: friendName)];
+        for (final debt in debtsForFriend) {
+          final index = _debts.length;
+          _debts.add(debt);
+          _amountControllers[index] = TextEditingController(
+            text: amountValues[debt] ?? debt.amount,
+          );
+          _descriptionControllers[index] = TextEditingController(
+            text: descriptionValues[debt] ?? debt.description,
+          );
+        }
       }
       _expandedNotes.removeWhere((name) => !selected.contains(name));
     });
@@ -2511,10 +2515,14 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   }
 
   bool _hasDraftContent(String friendName) {
-    final index = _debts.indexWhere((debt) => debt.friendName == friendName);
-    if (index < 0) return false;
-    return (_amountControllers[index]?.text.trim().isNotEmpty ?? false) ||
-        (_descriptionControllers[index]?.text.trim().isNotEmpty ?? false);
+    for (var index = 0; index < _debts.length; index++) {
+      if (_debts[index].friendName != friendName) continue;
+      if ((_amountControllers[index]?.text.trim().isNotEmpty ?? false) ||
+          (_descriptionControllers[index]?.text.trim().isNotEmpty ?? false)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<bool> _confirmParticipantRemoval(Set<String> removed) async {
@@ -2574,12 +2582,28 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     }
     final total = await _showEqualSplitPrompt(context);
     if (total == null || !mounted) return;
-    final shares = splitCurrencyTotal(total, _debts.length);
+    final friendNames = _debts.map((debt) => debt.friendName).toSet().toList();
+    final friendShares = splitCurrencyTotal(total, friendNames.length);
     setState(() {
-      for (var index = 0; index < _debts.length; index++) {
-        final value = shares[index].toStringAsFixed(2);
-        _debts[index].amount = value;
-        _amountControllers[index]?.text = value;
+      for (
+        var friendIndex = 0;
+        friendIndex < friendNames.length;
+        friendIndex++
+      ) {
+        final rowIndexes = <int>[
+          for (var index = 0; index < _debts.length; index++)
+            if (_debts[index].friendName == friendNames[friendIndex]) index,
+        ];
+        final rowShares = splitCurrencyTotal(
+          friendShares[friendIndex],
+          rowIndexes.length,
+        );
+        for (var rowIndex = 0; rowIndex < rowIndexes.length; rowIndex++) {
+          final debtIndex = rowIndexes[rowIndex];
+          final value = rowShares[rowIndex].toStringAsFixed(2);
+          _debts[debtIndex].amount = value;
+          _amountControllers[debtIndex]?.text = value;
+        }
       }
     });
   }
@@ -2878,7 +2902,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                 Row(
                   children: [
                     Text(
-                      "${_debts.length} selected",
+                      "$_selectedFriendCount selected",
                       style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
                     const Spacer(),

@@ -52,7 +52,9 @@ abstract final class AppTheme {
     inversePrimary: Color(0xFF0066CC),
   );
 
-  static ThemeData get dark {
+  static final ThemeData dark = _buildDarkTheme();
+
+  static ThemeData _buildDarkTheme() {
     final baseTextTheme = GoogleFonts.interTextTheme(
       ThemeData.dark(useMaterial3: true).textTheme,
     ).apply(bodyColor: AppPalette.label, displayColor: AppPalette.label);
@@ -69,6 +71,16 @@ abstract final class AppTheme {
       scaffoldBackgroundColor: AppPalette.background,
       canvasColor: AppPalette.background,
       cardColor: AppPalette.surface,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
+        },
+      ),
       dividerColor: AppPalette.separator,
       splashColor: AppPalette.label.withValues(alpha: 0.08),
       highlightColor: AppPalette.label.withValues(alpha: 0.04),

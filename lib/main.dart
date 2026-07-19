@@ -305,13 +305,16 @@ class _HomeScreenState extends State<HomeScreen> {
               totalOwed += (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
             }
 
-            return SingleChildScrollView(
+            final contentCount = filteredGroups.isEmpty
+                ? 1
+                : filteredGroups.length;
+
+            return ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Search Bar
-                  Padding(
+              itemCount: 3 + contentCount + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Container(
                       decoration: BoxDecoration(
@@ -354,10 +357,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                  ),
+                  );
+                }
 
-                  // Summary Cards
-                  Padding(
+                if (index == 1) {
+                  return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
@@ -382,13 +386,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
-                  ),
+                  );
+                }
 
-                  const SizedBox(height: 24),
-
-                  // Recent Ledgers Section
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                if (index == 2) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
                     child: Row(
                       children: [
                         Text(
@@ -415,74 +418,74 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
-                  ),
+                  );
+                }
 
-                  const SizedBox(height: 12),
-
-                  if (filteredGroups.isEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(48),
-                        child: Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: AppPalette.surfaceElevated,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                _searchQuery.isEmpty
-                                    ? Icons.account_balance_wallet_outlined
-                                    : Icons.search_off_outlined,
-                                size: 64,
-                                color: AppPalette.blue,
-                              ),
+                final contentIndex = index - 3;
+                if (filteredGroups.isEmpty && contentIndex == 0) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(48),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: const BoxDecoration(
+                              color: AppPalette.surfaceElevated,
+                              shape: BoxShape.circle,
                             ),
-                            const SizedBox(height: 24),
-                            Text(
+                            child: Icon(
                               _searchQuery.isEmpty
-                                  ? "No ledgers yet"
-                                  : "No matching ledgers",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: AppPalette.label,
-                              ),
+                                  ? Icons.account_balance_wallet_outlined
+                                  : Icons.search_off_outlined,
+                              size: 64,
+                              color: AppPalette.blue,
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _searchQuery.isEmpty
-                                  ? "Create your first ledger to start\ntracking expenses with friends"
-                                  : "Try a different name or clear your search.",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppPalette.secondaryLabel,
-                              ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? "No ledgers yet"
+                                : "No matching ledgers",
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: AppPalette.label,
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? "Create your first ledger to start\ntracking expenses with friends"
+                                : "Try a different name or clear your search.",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppPalette.secondaryLabel,
+                            ),
+                          ),
+                        ],
                       ),
-                    )
-                  else
-                    ...filteredGroups.map((group) {
-                      final groupName = group['name'] as String? ?? '';
-                      final totalOwed =
-                          (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
-                      final friends = List.from(group['friends'] ?? []);
+                    ),
+                  );
+                }
 
-                      return _LedgerCard(
-                        groupId: group.id,
-                        groupName: groupName,
-                        totalOwed: totalOwed,
-                        friends: friends,
-                      );
-                    }),
+                if (contentIndex >= filteredGroups.length) {
+                  return const SizedBox(height: 100);
+                }
 
-                  const SizedBox(height: 100), // Space for FAB
-                ],
-              ),
+                final group = filteredGroups[contentIndex];
+                final groupName = group['name'] as String? ?? '';
+                final groupTotalOwed =
+                    (group['totalOwed'] as num?)?.toDouble() ?? 0.0;
+                final friends = List.from(group['friends'] ?? []);
+                return _LedgerCard(
+                  groupId: group.id,
+                  groupName: groupName,
+                  totalOwed: groupTotalOwed,
+                  friends: friends,
+                );
+              },
             );
           },
         ),

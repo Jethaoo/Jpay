@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_theme.dart';
 import 'debt_calculations.dart';
 
-class GroupDetailsScreen extends StatelessWidget {
+class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
   final String groupName;
 
@@ -13,6 +13,38 @@ class GroupDetailsScreen extends StatelessWidget {
     required this.groupId,
     required this.groupName,
   });
+
+  @override
+  State<GroupDetailsScreen> createState() => _GroupDetailsScreenState();
+}
+
+class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
+  late Stream<QuerySnapshot> _expensesStream;
+
+  String get groupId => widget.groupId;
+  String get groupName => widget.groupName;
+
+  @override
+  void initState() {
+    super.initState();
+    _expensesStream = _createExpensesStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant GroupDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.groupId != widget.groupId) {
+      _expensesStream = _createExpensesStream();
+    }
+  }
+
+  Stream<QuerySnapshot> _createExpensesStream() {
+    return FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('expenses')
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,766 +123,781 @@ class GroupDetailsScreen extends StatelessWidget {
           ),
 
           // 3. BODY: Balances Summary + Expenses List
-          body: Column(
-            children: [
-              // --- Balances Summary ---
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF202A33), AppPalette.surface],
+          body: StreamBuilder<QuerySnapshot>(
+            stream: _expensesStream,
+            builder: (context, expenseSnapshot) => Column(
+              children: [
+                // --- Balances Summary ---
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF202A33), AppPalette.surface],
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: AppPalette.blue.withValues(alpha: 0.45),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: AppPalette.blue.withValues(alpha: 0.45),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.account_balance_wallet_outlined,
-                          size: 20,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          "Outstanding balances",
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                            letterSpacing: -0.3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 20,
                             color: Colors.white,
                           ),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => ManageFriendsDialog(
-                                groupId: groupId,
-                                currentFriends: friends,
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.group_outlined, size: 17),
-                          label: Text("${friends.length}"),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.white.withValues(
-                              alpha: 0.12,
+                          const SizedBox(width: 8),
+                          Text(
+                            "Outstanding balances",
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              letterSpacing: -0.3,
+                              color: Colors.white,
                             ),
-                            visualDensity: VisualDensity.compact,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('groups')
-                          .doc(groupId)
-                          .collection('expenses')
-                          .snapshots(),
-                      builder: (context, expenseSnapshot) {
-                        if (!expenseSnapshot.hasData) {
-                          return const SizedBox.shrink();
-                        }
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => ManageFriendsDialog(
+                                  groupId: groupId,
+                                  currentFriends: friends,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.group_outlined, size: 17),
+                            label: Text("${friends.length}"),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.12,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (context) {
+                          if (!expenseSnapshot.hasData) {
+                            return const SizedBox.shrink();
+                          }
 
-                        // Calculate balances per friend (only unpaid debts)
-                        final Map<String, double> balances = {};
-                        for (var expenseDoc in expenseSnapshot.data!.docs) {
-                          final expense =
-                              expenseDoc.data() as Map<String, dynamic>;
+                          // Calculate balances per friend (only unpaid debts)
+                          final Map<String, double> balances = {};
+                          for (var expenseDoc in expenseSnapshot.data!.docs) {
+                            final expense =
+                                expenseDoc.data() as Map<String, dynamic>;
 
-                          // Support both old format (owedBy) and new format (debts array)
-                          if (expense.containsKey('debts')) {
-                            // New format: debts array
-                            final debts = expense['debts'] as List? ?? [];
-                            for (var debt in debts) {
-                              final debtData = debt as Map<String, dynamic>;
-                              final paid = debtData['paid'] as bool? ?? false;
-                              if (paid) continue; // Skip paid debts
+                            // Support both old format (owedBy) and new format (debts array)
+                            if (expense.containsKey('debts')) {
+                              // New format: debts array
+                              final debts = expense['debts'] as List? ?? [];
+                              for (var debt in debts) {
+                                final debtData = debt as Map<String, dynamic>;
+                                final paid = debtData['paid'] as bool? ?? false;
+                                if (paid) continue; // Skip paid debts
 
-                              double amount =
-                                  (debtData['amount'] as num?)?.toDouble() ??
-                                  0.0;
+                                double amount =
+                                    (debtData['amount'] as num?)?.toDouble() ??
+                                    0.0;
 
-                              // Calculate final amount with tax/service
-                              final hasBaseAmount =
-                                  debtData['baseAmount'] != null;
-                              if (hasBaseAmount) {
-                                // New format: calculate from baseAmount + per-person tax/service
-                                final baseAmount =
-                                    (debtData['baseAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final taxForDebt =
-                                    (debtData['taxAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final serviceForDebt =
-                                    (debtData['serviceAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                amount =
-                                    baseAmount + taxForDebt + serviceForDebt;
-                              } else {
-                                // Backward compatibility: for older expenses that don't
-                                // have per-person tax/service, distribute expense-level
-                                // tax/service proportionally by base amount.
-                                final expenseBaseTotal =
-                                    (expense['totalAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final expenseTaxAmount =
-                                    (expense['taxAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final expenseServiceAmount =
-                                    (expense['serviceAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                if (expenseBaseTotal > 0 &&
-                                    (expenseTaxAmount != 0 ||
-                                        expenseServiceAmount != 0)) {
-                                  final ratio = amount / expenseBaseTotal;
+                                // Calculate final amount with tax/service
+                                final hasBaseAmount =
+                                    debtData['baseAmount'] != null;
+                                if (hasBaseAmount) {
+                                  // New format: calculate from baseAmount + per-person tax/service
+                                  final baseAmount =
+                                      (debtData['baseAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final taxForDebt =
+                                      (debtData['taxAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final serviceForDebt =
+                                      (debtData['serviceAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
                                   amount =
-                                      amount +
-                                      expenseTaxAmount * ratio +
-                                      expenseServiceAmount * ratio;
+                                      baseAmount + taxForDebt + serviceForDebt;
+                                } else {
+                                  // Backward compatibility: for older expenses that don't
+                                  // have per-person tax/service, distribute expense-level
+                                  // tax/service proportionally by base amount.
+                                  final expenseBaseTotal =
+                                      (expense['totalAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final expenseTaxAmount =
+                                      (expense['taxAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final expenseServiceAmount =
+                                      (expense['serviceAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  if (expenseBaseTotal > 0 &&
+                                      (expenseTaxAmount != 0 ||
+                                          expenseServiceAmount != 0)) {
+                                    final ratio = amount / expenseBaseTotal;
+                                    amount =
+                                        amount +
+                                        expenseTaxAmount * ratio +
+                                        expenseServiceAmount * ratio;
+                                  }
+                                }
+
+                                final friendName =
+                                    debtData['friendName'] as String? ?? '';
+
+                                if (friendName.isNotEmpty) {
+                                  balances[friendName] =
+                                      (balances[friendName] ?? 0.0) + amount;
                                 }
                               }
+                            } else {
+                              // Old format: single owedBy (for backward compatibility)
+                              final paid = expense['paid'] as bool? ?? false;
+                              if (paid) continue; // Skip paid expenses
 
-                              final friendName =
-                                  debtData['friendName'] as String? ?? '';
+                              final amount =
+                                  (expense['amount'] as num?)?.toDouble() ??
+                                  0.0;
+                              final owedBy = expense['owedBy'] as String? ?? '';
 
-                              if (friendName.isNotEmpty) {
-                                balances[friendName] =
-                                    (balances[friendName] ?? 0.0) + amount;
+                              if (owedBy.isNotEmpty) {
+                                balances[owedBy] =
+                                    (balances[owedBy] ?? 0.0) + amount;
                               }
                             }
-                          } else {
-                            // Old format: single owedBy (for backward compatibility)
-                            final paid = expense['paid'] as bool? ?? false;
-                            if (paid) continue; // Skip paid expenses
-
-                            final amount =
-                                (expense['amount'] as num?)?.toDouble() ?? 0.0;
-                            final owedBy = expense['owedBy'] as String? ?? '';
-
-                            if (owedBy.isNotEmpty) {
-                              balances[owedBy] =
-                                  (balances[owedBy] ?? 0.0) + amount;
-                            }
                           }
-                        }
 
-                        final outstandingTotal = balances.values.fold<double>(
-                          0,
-                          (total, amount) => total + amount,
-                        );
+                          final outstandingTotal = balances.values.fold<double>(
+                            0,
+                            (total, amount) => total + amount,
+                          );
 
-                        if (balances.isEmpty) {
-                          return Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle_outline,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    "Everyone is settled up",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
+                          if (balances.isEmpty) {
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    color: Colors.white,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      "Everyone is settled up",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final balanceEntries = balances.entries.toList();
+                          final expandedHeight = (balanceEntries.length * 66.0)
+                              .clamp(66.0, 250.0)
+                              .toDouble();
+
+                          return Theme(
+                            data: Theme.of(
+                              context,
+                            ).copyWith(dividerColor: Colors.transparent),
+                            child: ExpansionTile(
+                              initiallyExpanded: false,
+                              maintainState: true,
+                              tilePadding: EdgeInsets.zero,
+                              childrenPadding: EdgeInsets.zero,
+                              iconColor: Colors.white,
+                              collapsedIconColor: Colors.white,
+                              title: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "TOTAL TO COLLECT",
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.72,
+                                      ),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    "RM ${outstandingTotal.toStringAsFixed(2)}",
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Text(
+                                "${balanceEntries.length} ${balanceEntries.length == 1 ? 'friend owes' : 'friends owe'} you • Tap to view",
+                                style: GoogleFonts.inter(
+                                  color: Colors.white.withValues(alpha: 0.76),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              children: [
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  height: expandedHeight,
+                                  child: ListView.separated(
+                                    primary: false,
+                                    padding: EdgeInsets.zero,
+                                    itemCount: balanceEntries.length,
+                                    separatorBuilder: (context, index) =>
+                                        const SizedBox(height: 8),
+                                    itemBuilder: (context, index) {
+                                      final entry = balanceEntries[index];
+                                      final friendName = entry.key;
+                                      final amount = entry.value;
+                                      return Container(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          8,
+                                          6,
+                                          8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 17,
+                                              backgroundColor: Colors.white
+                                                  .withValues(alpha: 0.18),
+                                              child: Text(
+                                                friendName.isEmpty
+                                                    ? "?"
+                                                    : friendName[0]
+                                                          .toUpperCase(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                friendName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              "RM ${amount.toStringAsFixed(2)}",
+                                              style: GoogleFonts.inter(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.check_circle_outline,
+                                                size: 21,
+                                              ),
+                                              color: Colors.white,
+                                              tooltip: "Mark all as paid",
+                                              onPressed: () =>
+                                                  _markAllDebtsAsPaidForFriend(
+                                                    context,
+                                                    groupId,
+                                                    friendName,
+                                                    amount,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ],
                             ),
                           );
-                        }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
 
-                        final balanceEntries = balances.entries.toList();
-                        final expandedHeight = (balanceEntries.length * 66.0)
-                            .clamp(66.0, 250.0)
-                            .toDouble();
-
-                        return Theme(
-                          data: Theme.of(
-                            context,
-                          ).copyWith(dividerColor: Colors.transparent),
-                          child: ExpansionTile(
-                            initiallyExpanded: false,
-                            maintainState: true,
-                            tilePadding: EdgeInsets.zero,
-                            childrenPadding: EdgeInsets.zero,
-                            iconColor: Colors.white,
-                            collapsedIconColor: Colors.white,
-                            title: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                // --- Expenses List (Inner Stream) ---
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                  child: Row(
+                    children: [
+                      Text(
+                        "Expense history",
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        "Newest first",
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      if (expenseSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (!expenseSnapshot.hasData ||
+                          expenseSnapshot.data!.docs.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  "TOTAL TO COLLECT",
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white.withValues(alpha: 0.72),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.8,
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primaryContainer,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.receipt_long_outlined,
+                                    size: 32,
+                                    color: colorScheme.onPrimaryContainer,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 16),
                                 Text(
-                                  "RM ${outstandingTotal.toStringAsFixed(2)}",
+                                  "No expenses yet",
                                   style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontSize: 26,
+                                    fontSize: 17,
                                     fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.8,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  "Add your first shared cost to start tracking who owes you.",
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.inter(
+                                    color: colorScheme.onSurfaceVariant,
+                                    height: 1.4,
                                   ),
                                 ),
                               ],
                             ),
-                            subtitle: Text(
-                              "${balanceEntries.length} ${balanceEntries.length == 1 ? 'friend owes' : 'friends owe'} you • Tap to view",
-                              style: GoogleFonts.inter(
-                                color: Colors.white.withValues(alpha: 0.76),
-                                fontSize: 12,
-                              ),
-                            ),
-                            children: [
-                              const SizedBox(height: 8),
-                              SizedBox(
-                                height: expandedHeight,
-                                child: ListView.separated(
-                                  primary: false,
-                                  padding: EdgeInsets.zero,
-                                  itemCount: balanceEntries.length,
-                                  separatorBuilder: (context, index) =>
-                                      const SizedBox(height: 8),
-                                  itemBuilder: (context, index) {
-                                    final entry = balanceEntries[index];
-                                    final friendName = entry.key;
-                                    final amount = entry.value;
-                                    return Container(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        12,
-                                        8,
-                                        6,
-                                        8,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.12,
-                                        ),
-                                        borderRadius: BorderRadius.circular(15),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 17,
-                                            backgroundColor: Colors.white
-                                                .withValues(alpha: 0.18),
-                                            child: Text(
-                                              friendName.isEmpty
-                                                  ? "?"
-                                                  : friendName[0].toUpperCase(),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              friendName,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: GoogleFonts.inter(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            "RM ${amount.toStringAsFixed(2)}",
-                                            style: GoogleFonts.inter(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.check_circle_outline,
-                                              size: 21,
-                                            ),
-                                            color: Colors.white,
-                                            tooltip: "Mark all as paid",
-                                            onPressed: () =>
-                                                _markAllDebtsAsPaidForFriend(
-                                                  context,
-                                                  groupId,
-                                                  friendName,
-                                                  amount,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
                           ),
                         );
-                      },
-                    ),
-                  ],
-                ),
-              ),
+                      }
 
-              // --- Expenses List (Inner Stream) ---
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-                child: Row(
-                  children: [
-                    Text(
-                      "Expense history",
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      "Newest first",
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('groups')
-                      .doc(groupId)
-                      .collection('expenses')
-                      .orderBy('date', descending: true)
-                      .snapshots(),
-                  builder: (context, expenseSnapshot) {
-                    if (expenseSnapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (!expenseSnapshot.hasData ||
-                        expenseSnapshot.data!.docs.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: colorScheme.primaryContainer,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.receipt_long_outlined,
-                                  size: 32,
-                                  color: colorScheme.onPrimaryContainer,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                "No expenses yet",
-                                style: GoogleFonts.inter(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                "Add your first shared cost to start tracking who owes you.",
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.inter(
-                                  color: colorScheme.onSurfaceVariant,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
+                      final expenses = expenseSnapshot.data!.docs.toList()
+                        ..sort((a, b) {
+                          final aData = a.data() as Map<String, dynamic>;
+                          final bData = b.data() as Map<String, dynamic>;
+                          final aDate = aData['date'] as Timestamp?;
+                          final bDate = bData['date'] as Timestamp?;
+                          if (aDate == null && bDate == null) return 0;
+                          if (aDate == null) return 1;
+                          if (bDate == null) return -1;
+                          return bDate.compareTo(aDate);
+                        });
 
-                    final expenses = expenseSnapshot.data!.docs;
+                      return ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 100),
+                        itemCount: expenses.length,
+                        itemBuilder: (context, index) {
+                          final expense = expenses[index];
+                          final data = expense.data() as Map<String, dynamic>;
+                          final title = data['title'] as String? ?? '';
+                          final date = data['date'] as Timestamp?;
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 100),
-                      itemCount: expenses.length,
-                      itemBuilder: (context, index) {
-                        final expense = expenses[index];
-                        final data = expense.data() as Map<String, dynamic>;
-                        final title = data['title'] as String? ?? '';
-                        final date = data['date'] as Timestamp?;
+                          // Support both old and new format
+                          final bool hasDebts = data.containsKey('debts');
+                          final List<Map<String, dynamic>> debts;
+                          double totalAmount = 0.0;
+                          final double taxAmount =
+                              (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
+                          final double serviceAmount =
+                              (data['serviceAmount'] as num?)?.toDouble() ??
+                              0.0;
+                          double totalWithCharges =
+                              (data['totalWithCharges'] as num?)?.toDouble() ??
+                              0.0;
+                          bool allPaid = true;
 
-                        // Support both old and new format
-                        final bool hasDebts = data.containsKey('debts');
-                        final List<Map<String, dynamic>> debts;
-                        double totalAmount = 0.0;
-                        final double taxAmount =
-                            (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
-                        final double serviceAmount =
-                            (data['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-                        double totalWithCharges =
-                            (data['totalWithCharges'] as num?)?.toDouble() ??
-                            0.0;
-                        bool allPaid = true;
-
-                        if (hasDebts) {
-                          // New format: debts array
-                          final debtsList = data['debts'] as List? ?? [];
-                          debts = debtsList
-                              .map((d) => d as Map<String, dynamic>)
-                              .toList();
-                          for (var debt in debts) {
-                            final amount =
-                                (debt['amount'] as num?)?.toDouble() ?? 0.0;
-                            totalAmount += amount;
-                            if (!(debt['paid'] as bool? ?? false)) {
-                              allPaid = false;
+                          if (hasDebts) {
+                            // New format: debts array
+                            final debtsList = data['debts'] as List? ?? [];
+                            debts = debtsList
+                                .map((d) => d as Map<String, dynamic>)
+                                .toList();
+                            for (var debt in debts) {
+                              final amount =
+                                  (debt['amount'] as num?)?.toDouble() ?? 0.0;
+                              totalAmount += amount;
+                              if (!(debt['paid'] as bool? ?? false)) {
+                                allPaid = false;
+                              }
                             }
+                          } else {
+                            // Old format: single owedBy (for backward compatibility)
+                            final amount =
+                                (data['amount'] as num?)?.toDouble() ?? 0.0;
+                            final owedBy = data['owedBy'] as String? ?? '';
+                            final paid = data['paid'] as bool? ?? false;
+                            totalAmount = amount;
+                            allPaid = paid;
+                            debts = [
+                              {
+                                'friendName': owedBy,
+                                'amount': amount,
+                                'description': '',
+                                'paid': paid,
+                              },
+                            ];
                           }
-                        } else {
-                          // Old format: single owedBy (for backward compatibility)
-                          final amount =
-                              (data['amount'] as num?)?.toDouble() ?? 0.0;
-                          final owedBy = data['owedBy'] as String? ?? '';
-                          final paid = data['paid'] as bool? ?? false;
-                          totalAmount = amount;
-                          allPaid = paid;
-                          debts = [
-                            {
-                              'friendName': owedBy,
-                              'amount': amount,
-                              'description': '',
-                              'paid': paid,
-                            },
-                          ];
-                        }
 
-                        if (totalWithCharges <= 0) {
-                          totalWithCharges =
-                              totalAmount + taxAmount + serviceAmount;
-                        }
+                          if (totalWithCharges <= 0) {
+                            totalWithCharges =
+                                totalAmount + taxAmount + serviceAmount;
+                          }
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 0,
-                          color: allPaid
-                              ? colorScheme.surfaceContainerLow
-                              : colorScheme.surface,
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(color: colorScheme.outlineVariant),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: ExpansionTile(
-                            tilePadding: const EdgeInsets.fromLTRB(
-                              14,
-                              6,
-                              10,
-                              6,
-                            ),
-                            childrenPadding: const EdgeInsets.fromLTRB(
-                              10,
-                              0,
-                              10,
-                              10,
-                            ),
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            leading: CircleAvatar(
-                              backgroundColor: allPaid
-                                  ? colorScheme.tertiaryContainer
-                                  : colorScheme.primaryContainer,
-                              child: Icon(
-                                allPaid
-                                    ? Icons.check_rounded
-                                    : Icons.receipt_long_outlined,
-                                color: allPaid
-                                    ? colorScheme.onTertiaryContainer
-                                    : colorScheme.onPrimaryContainer,
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: 0,
+                            color: allPaid
+                                ? colorScheme.surfaceContainerLow
+                                : colorScheme.surface,
+                            shape: RoundedRectangleBorder(
+                              side: BorderSide(
+                                color: colorScheme.outlineVariant,
                               ),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      decoration: allPaid
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                    ),
-                                  ),
+                            clipBehavior: Clip.antiAlias,
+                            child: ExpansionTile(
+                              tilePadding: const EdgeInsets.fromLTRB(
+                                14,
+                                6,
+                                10,
+                                6,
+                              ),
+                              childrenPadding: const EdgeInsets.fromLTRB(
+                                10,
+                                0,
+                                10,
+                                10,
+                              ),
+                              shape: const Border(),
+                              collapsedShape: const Border(),
+                              leading: CircleAvatar(
+                                backgroundColor: allPaid
+                                    ? colorScheme.tertiaryContainer
+                                    : colorScheme.primaryContainer,
+                                child: Icon(
+                                  allPaid
+                                      ? Icons.check_rounded
+                                      : Icons.receipt_long_outlined,
+                                  color: allPaid
+                                      ? colorScheme.onTertiaryContainer
+                                      : colorScheme.onPrimaryContainer,
                                 ),
-                                if (allPaid)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.shade50,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
                                     child: Text(
-                                      "All Paid",
-                                      style: GoogleFonts.inter(
-                                        color: Colors.green.shade700,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
+                                      title,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        decoration: allPaid
+                                            ? TextDecoration.lineThrough
+                                            : null,
                                       ),
                                     ),
                                   ),
-                              ],
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "${debts.length} ${debts.length == 1 ? 'person' : 'people'} • ${date == null ? 'Date unavailable' : _formatDate(date)}",
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (taxAmount > 0 || serviceAmount > 0)
+                                  if (allPaid)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        "All Paid",
+                                        style: GoogleFonts.inter(
+                                          color: Colors.green.shade700,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    "Includes ${_formatCharges(taxAmount, serviceAmount)}",
+                                    "${debts.length} ${debts.length == 1 ? 'person' : 'people'} • ${date == null ? 'Date unavailable' : _formatDate(date)}",
                                     style: GoogleFonts.inter(
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w400,
                                       color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
+                                  if (taxAmount > 0 || serviceAmount > 0)
                                     Text(
-                                      "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
+                                      "Includes ${_formatCharges(taxAmount, serviceAmount)}",
                                       style: GoogleFonts.inter(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: allPaid
-                                            ? colorScheme.onSurfaceVariant
-                                            : colorScheme.primary,
-                                        letterSpacing: -0.3,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color: colorScheme.onSurfaceVariant,
                                       ),
                                     ),
-                                  ],
-                                ),
-                                PopupMenuButton<String>(
-                                  tooltip: "Expense actions",
-                                  onSelected: (action) {
-                                    if (action == 'edit') {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => EditExpenseDialog(
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
+                                        style: GoogleFonts.inter(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: allPaid
+                                              ? colorScheme.onSurfaceVariant
+                                              : colorScheme.primary,
+                                          letterSpacing: -0.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  PopupMenuButton<String>(
+                                    tooltip: "Expense actions",
+                                    onSelected: (action) {
+                                      if (action == 'edit') {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) =>
+                                              EditExpenseDialog(
+                                                groupId: groupId,
+                                                expenseId: expense.id,
+                                                friends: friends,
+                                                initialTitle: title,
+                                                initialDebts: debts,
+                                                initialTaxPercent:
+                                                    (data['taxPercent'] as num?)
+                                                        ?.toDouble() ??
+                                                    0.0,
+                                                initialServicePercent:
+                                                    (data['servicePercent']
+                                                            as num?)
+                                                        ?.toDouble() ??
+                                                    0.0,
+                                              ),
+                                        );
+                                      } else if (action == 'delete') {
+                                        _confirmDeleteExpense(
+                                          context,
                                           groupId: groupId,
                                           expenseId: expense.id,
-                                          friends: friends,
-                                          initialTitle: title,
-                                          initialDebts: debts,
-                                          initialTaxPercent:
-                                              (data['taxPercent'] as num?)
-                                                  ?.toDouble() ??
-                                              0.0,
-                                          initialServicePercent:
-                                              (data['servicePercent'] as num?)
-                                                  ?.toDouble() ??
-                                              0.0,
+                                          title: title,
+                                          currentExpense: data,
+                                        );
+                                      }
+                                    },
+                                    itemBuilder: (context) => const [
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.edit_outlined),
+                                          title: Text("Edit expense"),
                                         ),
-                                      );
-                                    } else if (action == 'delete') {
-                                      _confirmDeleteExpense(
-                                        context,
-                                        groupId: groupId,
-                                        expenseId: expense.id,
-                                        title: title,
-                                        currentExpense: data,
-                                      );
-                                    }
-                                  },
-                                  itemBuilder: (context) => const [
-                                    PopupMenuItem(
-                                      value: 'edit',
-                                      child: ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        leading: Icon(Icons.edit_outlined),
-                                        title: Text("Edit expense"),
                                       ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'delete',
-                                      child: ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        leading: Icon(Icons.delete_outline),
-                                        title: Text("Delete expense"),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.delete_outline),
+                                          title: Text("Delete expense"),
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            children: debts.map((debt) {
-                              final friendName =
-                                  debt['friendName'] as String? ?? '';
-                              double amount =
-                                  (debt['amount'] as num?)?.toDouble() ?? 0.0;
-
-                              // Calculate final amount with tax/service if needed
-                              final hasBaseAmount = debt['baseAmount'] != null;
-                              if (hasBaseAmount) {
-                                // New format: calculate from baseAmount + per-person tax/service
-                                final baseAmount =
-                                    (debt['baseAmount'] as num?)?.toDouble() ??
-                                    0.0;
-                                final taxForDebt =
-                                    (debt['taxAmount'] as num?)?.toDouble() ??
-                                    0.0;
-                                final serviceForDebt =
-                                    (debt['serviceAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                amount =
-                                    baseAmount + taxForDebt + serviceForDebt;
-                              } else {
-                                // Backward compatibility: distribute expense-level tax/service proportionally
-                                final expenseBaseTotal = totalAmount;
-                                final expenseTaxAmount = taxAmount;
-                                final expenseServiceAmount = serviceAmount;
-                                if (expenseBaseTotal > 0 &&
-                                    (expenseTaxAmount != 0 ||
-                                        expenseServiceAmount != 0)) {
-                                  final ratio = amount / expenseBaseTotal;
-                                  amount =
-                                      amount +
-                                      expenseTaxAmount * ratio +
-                                      expenseServiceAmount * ratio;
-                                }
-                              }
-
-                              final description =
-                                  debt['description'] as String? ?? '';
-                              final paid = debt['paid'] as bool? ?? false;
-
-                              return ListTile(
-                                dense: true,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                tileColor: colorScheme.surfaceContainerLow,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 2,
-                                ),
-                                leading: Icon(
-                                  paid
-                                      ? Icons.check_circle
-                                      : Icons.person_outline,
-                                  color: paid
-                                      ? colorScheme.tertiary
-                                      : colorScheme.onSurfaceVariant,
-                                  size: 20,
-                                ),
-                                title: Text(
-                                  friendName,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    decoration: paid
-                                        ? TextDecoration.lineThrough
-                                        : null,
+                                    ],
                                   ),
-                                ),
-                                subtitle: description.isNotEmpty
-                                    ? Text(description)
-                                    : null,
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      "RM ${amount.toStringAsFixed(2)}",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: paid
-                                            ? colorScheme.onSurfaceVariant
-                                            : colorScheme.primary,
-                                      ),
+                                ],
+                              ),
+                              children: debts.map((debt) {
+                                final friendName =
+                                    debt['friendName'] as String? ?? '';
+                                double amount =
+                                    (debt['amount'] as num?)?.toDouble() ?? 0.0;
+
+                                // Calculate final amount with tax/service if needed
+                                final hasBaseAmount =
+                                    debt['baseAmount'] != null;
+                                if (hasBaseAmount) {
+                                  // New format: calculate from baseAmount + per-person tax/service
+                                  final baseAmount =
+                                      (debt['baseAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final taxForDebt =
+                                      (debt['taxAmount'] as num?)?.toDouble() ??
+                                      0.0;
+                                  final serviceForDebt =
+                                      (debt['serviceAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  amount =
+                                      baseAmount + taxForDebt + serviceForDebt;
+                                } else {
+                                  // Backward compatibility: distribute expense-level tax/service proportionally
+                                  final expenseBaseTotal = totalAmount;
+                                  final expenseTaxAmount = taxAmount;
+                                  final expenseServiceAmount = serviceAmount;
+                                  if (expenseBaseTotal > 0 &&
+                                      (expenseTaxAmount != 0 ||
+                                          expenseServiceAmount != 0)) {
+                                    final ratio = amount / expenseBaseTotal;
+                                    amount =
+                                        amount +
+                                        expenseTaxAmount * ratio +
+                                        expenseServiceAmount * ratio;
+                                  }
+                                }
+
+                                final description =
+                                    debt['description'] as String? ?? '';
+                                final paid = debt['paid'] as bool? ?? false;
+
+                                return ListTile(
+                                  dense: true,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  tileColor: colorScheme.surfaceContainerLow,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 2,
+                                  ),
+                                  leading: Icon(
+                                    paid
+                                        ? Icons.check_circle
+                                        : Icons.person_outline,
+                                    color: paid
+                                        ? colorScheme.tertiary
+                                        : colorScheme.onSurfaceVariant,
+                                    size: 20,
+                                  ),
+                                  title: Text(
+                                    friendName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      decoration: paid
+                                          ? TextDecoration.lineThrough
+                                          : null,
                                     ),
-                                    if (!paid)
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.check_circle_outline,
-                                          size: 18,
-                                        ),
-                                        color: colorScheme.tertiary,
-                                        tooltip: "Mark as Paid",
-                                        onPressed: () => _markDebtAsPaid(
-                                          context,
-                                          expense.id,
-                                          groupId,
-                                          debts.indexOf(debt),
-                                          amount,
+                                  ),
+                                  subtitle: description.isNotEmpty
+                                      ? Text(description)
+                                      : null,
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        "RM ${amount.toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: paid
+                                              ? colorScheme.onSurfaceVariant
+                                              : colorScheme.primary,
                                         ),
                                       ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                                      if (!paid)
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 18,
+                                          ),
+                                          color: colorScheme.tertiary,
+                                          tooltip: "Mark as Paid",
+                                          onPressed: () => _markDebtAsPaid(
+                                            context,
+                                            expense.id,
+                                            groupId,
+                                            debts.indexOf(debt),
+                                            amount,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
 
           // 4. FLOATING ACTION BUTTON

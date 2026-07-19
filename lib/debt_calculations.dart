@@ -1,5 +1,18 @@
 double roundCurrency(num value) => (value.toDouble() * 100).round() / 100;
 
+List<double> splitCurrencyTotal(num total, int participantCount) {
+  if (participantCount <= 0) return const [];
+
+  final totalCents = (total.toDouble() * 100).round();
+  final baseCents = totalCents ~/ participantCount;
+  final remainder = totalCents.remainder(participantCount);
+
+  return List<double>.generate(
+    participantCount,
+    (index) => (baseCents + (index < remainder ? 1 : 0)) / 100,
+  );
+}
+
 double effectiveDebtAmount(
   Map<String, dynamic> debt, {
   Map<String, dynamic>? expense,
@@ -38,4 +51,9 @@ double outstandingExpenseTotal(Map<String, dynamic> expense) {
 
   if (expense['paid'] == true) return 0;
   return roundCurrency((expense['amount'] as num?)?.toDouble() ?? 0);
+}
+
+double expenseDeletionBalanceDelta(Map<String, dynamic> expense) {
+  final outstanding = outstandingExpenseTotal(expense);
+  return outstanding == 0 ? 0 : -outstanding;
 }

@@ -1,7 +1,7 @@
 # Jpay
 
 Jpay is a Flutter app for tracking shared expenses and outstanding balances with
-friends. It keeps each trip, household, or event in its own ledger and provides
+friends. It keeps each trip, household, or event in its own group and provides
 a focused dark-mode interface for recording expenses, managing participants,
 and marking payments as received.
 
@@ -12,9 +12,9 @@ and marking payments as received.
 ## Features
 
 - Email and password authentication with Firebase Authentication
-- Dashboard showing outstanding balances and active ledgers
-- Ledger creation, search, management, and deletion
-- Per-ledger friend management
+- Dashboard showing outstanding balances and active groups
+- Group creation, search, renaming, management, and deletion
+- Per-group friend management
 - Add and edit expenses with descriptions, tax, and service charges
 - Track individual shares and paid or unpaid status
 - Mark one debt or all debts for a friend as paid
@@ -40,7 +40,7 @@ lib/
 ├── debt_calculations.dart      # Currency and outstanding-balance helpers
 ├── firebase_options.dart       # Generated FlutterFire configuration
 ├── group_details_screen.dart   # Balances, expenses, and friend management
-├── main.dart                   # App entry point, authentication, and ledgers
+├── main.dart                   # App entry point, authentication, and groups
 └── profile_screen.dart         # Account and profile-photo management
 
 firestore.rules                 # Firestore access rules
@@ -143,8 +143,8 @@ upload keystore and replace the release signing configuration in
 ## Data access model
 
 - Users can read and update only their own profile document.
-- Users can create and access only ledgers they own.
-- Expense documents inherit access from their parent ledger owner.
+- Users can create and access only groups they own.
+- Expense documents inherit access from their parent group owner.
 - Profile images are named after the authenticated user's UID.
 
 Review and deploy `firestore.rules` and `storage.rules` whenever the data model

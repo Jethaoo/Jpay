@@ -3,8 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_theme.dart';
 import 'debt_calculations.dart';
+import 'edit_group_name_dialog.dart';
+import 'network_status.dart';
 
-class GroupDetailsScreen extends StatelessWidget {
+class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
   final String groupName;
 
@@ -13,6 +15,52 @@ class GroupDetailsScreen extends StatelessWidget {
     required this.groupId,
     required this.groupName,
   });
+
+  @override
+  State<GroupDetailsScreen> createState() => _GroupDetailsScreenState();
+}
+
+class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
+  late Stream<QuerySnapshot> _expensesStream;
+
+  String get groupId => widget.groupId;
+  String get groupName => widget.groupName;
+
+  @override
+  void initState() {
+    super.initState();
+    _expensesStream = _createExpensesStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant GroupDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.groupId != widget.groupId) {
+      _expensesStream = _createExpensesStream();
+    }
+  }
+
+  Future<void> _showEditGroupName(String currentName) async {
+    final updatedName = await showDialog<String>(
+      context: context,
+      builder: (context) =>
+          EditGroupNameDialog(groupId: groupId, currentName: currentName),
+    );
+
+    if (updatedName != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Group renamed to "$updatedName"')),
+      );
+    }
+  }
+
+  Stream<QuerySnapshot> _createExpensesStream() {
+    return FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('expenses')
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,13 +107,17 @@ class GroupDetailsScreen extends StatelessWidget {
         // 2. DATA EXTRACTION
         final groupData = groupSnapshot.data!.data() as Map<String, dynamic>;
         final List<dynamic> friends = groupData['friends'] ?? [];
+        final storedGroupName = (groupData['name'] as String?)?.trim();
+        final displayedGroupName = storedGroupName?.isNotEmpty == true
+            ? storedGroupName!
+            : groupName;
         final colorScheme = Theme.of(context).colorScheme;
 
         return Scaffold(
           backgroundColor: AppPalette.background,
           appBar: AppBar(
             title: Text(
-              groupName,
+              displayedGroupName,
               style: GoogleFonts.inter(
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.3,
@@ -73,6 +125,11 @@ class GroupDetailsScreen extends StatelessWidget {
             ),
             elevation: 0,
             actions: [
+              IconButton(
+                onPressed: () => _showEditGroupName(displayedGroupName),
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: "Edit group name",
+              ),
               IconButton(
                 onPressed: () {
                   showDialog(
@@ -91,700 +148,781 @@ class GroupDetailsScreen extends StatelessWidget {
           ),
 
           // 3. BODY: Balances Summary + Expenses List
-          body: Column(
-            children: [
-              // --- Balances Summary ---
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF202A33), AppPalette.surface],
+          body: StreamBuilder<QuerySnapshot>(
+            stream: _expensesStream,
+            builder: (context, expenseSnapshot) => Column(
+              children: [
+                // --- Balances Summary ---
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF202A33), AppPalette.surface],
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: AppPalette.blue.withValues(alpha: 0.45),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: AppPalette.blue.withValues(alpha: 0.45),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.account_balance_wallet_outlined,
-                          size: 20,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          "Outstanding balances",
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                            letterSpacing: -0.3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 20,
                             color: Colors.white,
                           ),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => ManageFriendsDialog(
-                                groupId: groupId,
-                                currentFriends: friends,
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.group_outlined, size: 17),
-                          label: Text("${friends.length}"),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.white.withValues(
-                              alpha: 0.12,
+                          const SizedBox(width: 8),
+                          Text(
+                            "Outstanding balances",
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              letterSpacing: -0.3,
+                              color: Colors.white,
                             ),
-                            visualDensity: VisualDensity.compact,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('groups')
-                          .doc(groupId)
-                          .collection('expenses')
-                          .snapshots(),
-                      builder: (context, expenseSnapshot) {
-                        if (!expenseSnapshot.hasData) {
-                          return const SizedBox.shrink();
-                        }
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => ManageFriendsDialog(
+                                  groupId: groupId,
+                                  currentFriends: friends,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.group_outlined, size: 17),
+                            label: Text("${friends.length}"),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.12,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (context) {
+                          if (!expenseSnapshot.hasData) {
+                            return const SizedBox.shrink();
+                          }
 
-                        // Calculate balances per friend (only unpaid debts)
-                        final Map<String, double> balances = {};
-                        for (var expenseDoc in expenseSnapshot.data!.docs) {
-                          final expense =
-                              expenseDoc.data() as Map<String, dynamic>;
+                          // Calculate balances per friend (only unpaid debts)
+                          final Map<String, double> balances = {};
+                          for (var expenseDoc in expenseSnapshot.data!.docs) {
+                            final expense =
+                                expenseDoc.data() as Map<String, dynamic>;
 
-                          // Support both old format (owedBy) and new format (debts array)
-                          if (expense.containsKey('debts')) {
-                            // New format: debts array
-                            final debts = expense['debts'] as List? ?? [];
-                            for (var debt in debts) {
-                              final debtData = debt as Map<String, dynamic>;
-                              final paid = debtData['paid'] as bool? ?? false;
-                              if (paid) continue; // Skip paid debts
+                            // Support both old format (owedBy) and new format (debts array)
+                            if (expense.containsKey('debts')) {
+                              // New format: debts array
+                              final debts = expense['debts'] as List? ?? [];
+                              for (var debt in debts) {
+                                final debtData = debt as Map<String, dynamic>;
+                                final paid = debtData['paid'] as bool? ?? false;
+                                if (paid) continue; // Skip paid debts
 
-                              double amount =
-                                  (debtData['amount'] as num?)?.toDouble() ??
-                                  0.0;
+                                double amount =
+                                    (debtData['amount'] as num?)?.toDouble() ??
+                                    0.0;
 
-                              // Calculate final amount with tax/service
-                              final hasBaseAmount =
-                                  debtData['baseAmount'] != null;
-                              if (hasBaseAmount) {
-                                // New format: calculate from baseAmount + per-person tax/service
-                                final baseAmount =
-                                    (debtData['baseAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final taxForDebt =
-                                    (debtData['taxAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final serviceForDebt =
-                                    (debtData['serviceAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                amount =
-                                    baseAmount + taxForDebt + serviceForDebt;
-                              } else {
-                                // Backward compatibility: for older expenses that don't
-                                // have per-person tax/service, distribute expense-level
-                                // tax/service proportionally by base amount.
-                                final expenseBaseTotal =
-                                    (expense['totalAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final expenseTaxAmount =
-                                    (expense['taxAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                final expenseServiceAmount =
-                                    (expense['serviceAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                if (expenseBaseTotal > 0 &&
-                                    (expenseTaxAmount != 0 ||
-                                        expenseServiceAmount != 0)) {
-                                  final ratio = amount / expenseBaseTotal;
+                                // Calculate final amount with tax/service
+                                final hasBaseAmount =
+                                    debtData['baseAmount'] != null;
+                                if (hasBaseAmount) {
+                                  // New format: calculate from baseAmount + per-person tax/service
+                                  final baseAmount =
+                                      (debtData['baseAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final taxForDebt =
+                                      (debtData['taxAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final serviceForDebt =
+                                      (debtData['serviceAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
                                   amount =
-                                      amount +
-                                      expenseTaxAmount * ratio +
-                                      expenseServiceAmount * ratio;
+                                      baseAmount + taxForDebt + serviceForDebt;
+                                } else {
+                                  // Backward compatibility: for older expenses that don't
+                                  // have per-person tax/service, distribute expense-level
+                                  // tax/service proportionally by base amount.
+                                  final expenseBaseTotal =
+                                      (expense['totalAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final expenseTaxAmount =
+                                      (expense['taxAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final expenseServiceAmount =
+                                      (expense['serviceAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  if (expenseBaseTotal > 0 &&
+                                      (expenseTaxAmount != 0 ||
+                                          expenseServiceAmount != 0)) {
+                                    final ratio = amount / expenseBaseTotal;
+                                    amount =
+                                        amount +
+                                        expenseTaxAmount * ratio +
+                                        expenseServiceAmount * ratio;
+                                  }
+                                }
+
+                                final friendName =
+                                    debtData['friendName'] as String? ?? '';
+
+                                if (friendName.isNotEmpty) {
+                                  balances[friendName] =
+                                      (balances[friendName] ?? 0.0) + amount;
                                 }
                               }
+                            } else {
+                              // Old format: single owedBy (for backward compatibility)
+                              final paid = expense['paid'] as bool? ?? false;
+                              if (paid) continue; // Skip paid expenses
 
-                              final friendName =
-                                  debtData['friendName'] as String? ?? '';
+                              final amount =
+                                  (expense['amount'] as num?)?.toDouble() ??
+                                  0.0;
+                              final owedBy = expense['owedBy'] as String? ?? '';
 
-                              if (friendName.isNotEmpty) {
-                                balances[friendName] =
-                                    (balances[friendName] ?? 0.0) + amount;
+                              if (owedBy.isNotEmpty) {
+                                balances[owedBy] =
+                                    (balances[owedBy] ?? 0.0) + amount;
                               }
                             }
-                          } else {
-                            // Old format: single owedBy (for backward compatibility)
-                            final paid = expense['paid'] as bool? ?? false;
-                            if (paid) continue; // Skip paid expenses
-
-                            final amount =
-                                (expense['amount'] as num?)?.toDouble() ?? 0.0;
-                            final owedBy = expense['owedBy'] as String? ?? '';
-
-                            if (owedBy.isNotEmpty) {
-                              balances[owedBy] =
-                                  (balances[owedBy] ?? 0.0) + amount;
-                            }
                           }
-                        }
 
-                        final outstandingTotal = balances.values.fold<double>(
-                          0,
-                          (total, amount) => total + amount,
-                        );
+                          final outstandingTotal = balances.values.fold<double>(
+                            0,
+                            (total, amount) => total + amount,
+                          );
 
-                        if (balances.isEmpty) {
-                          return Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle_outline,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    "Everyone is settled up",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
+                          if (balances.isEmpty) {
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    color: Colors.white,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      "Everyone is settled up",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final balanceEntries = balances.entries.toList();
+                          final expandedHeight = (balanceEntries.length * 66.0)
+                              .clamp(66.0, 250.0)
+                              .toDouble();
+
+                          return Theme(
+                            data: Theme.of(
+                              context,
+                            ).copyWith(dividerColor: Colors.transparent),
+                            child: ExpansionTile(
+                              initiallyExpanded: false,
+                              maintainState: true,
+                              tilePadding: EdgeInsets.zero,
+                              childrenPadding: EdgeInsets.zero,
+                              iconColor: Colors.white,
+                              collapsedIconColor: Colors.white,
+                              title: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "TOTAL TO COLLECT",
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.72,
+                                      ),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    "RM ${outstandingTotal.toStringAsFixed(2)}",
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Text(
+                                "${balanceEntries.length} ${balanceEntries.length == 1 ? 'friend owes' : 'friends owe'} you • Tap to view",
+                                style: GoogleFonts.inter(
+                                  color: Colors.white.withValues(alpha: 0.76),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              children: [
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  height: expandedHeight,
+                                  child: ListView.separated(
+                                    primary: false,
+                                    padding: EdgeInsets.zero,
+                                    itemCount: balanceEntries.length,
+                                    separatorBuilder: (context, index) =>
+                                        const SizedBox(height: 8),
+                                    itemBuilder: (context, index) {
+                                      final entry = balanceEntries[index];
+                                      final friendName = entry.key;
+                                      final amount = entry.value;
+                                      return Container(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          8,
+                                          6,
+                                          8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 17,
+                                              backgroundColor: Colors.white
+                                                  .withValues(alpha: 0.18),
+                                              child: Text(
+                                                friendName.isEmpty
+                                                    ? "?"
+                                                    : friendName[0]
+                                                          .toUpperCase(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                friendName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              "RM ${amount.toStringAsFixed(2)}",
+                                              style: GoogleFonts.inter(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.check_circle_outline,
+                                                size: 21,
+                                              ),
+                                              color: Colors.white,
+                                              tooltip: "Mark all as paid",
+                                              onPressed: () =>
+                                                  _markAllDebtsAsPaidForFriend(
+                                                    context,
+                                                    groupId,
+                                                    friendName,
+                                                    amount,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ],
                             ),
                           );
-                        }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "TOTAL TO COLLECT",
-                              style: GoogleFonts.inter(
-                                color: Colors.white.withValues(alpha: 0.72),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "RM ${outstandingTotal.toStringAsFixed(2)}",
-                              style: GoogleFonts.inter(
-                                color: Colors.white,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -1,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            ...balances.entries.map((entry) {
-                              final friendName = entry.key;
-                              final amount = entry.value;
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(15),
+                // --- Expenses List (Inner Stream) ---
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                  child: Row(
+                    children: [
+                      Text(
+                        "Expense history",
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        "Newest first",
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      if (expenseSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (!expenseSnapshot.hasData ||
+                          expenseSnapshot.data!.docs.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primaryContainer,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.receipt_long_outlined,
+                                    size: 32,
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 17,
-                                      backgroundColor: Colors.white.withValues(
-                                        alpha: 0.18,
-                                      ),
-                                      child: Text(
-                                        friendName.isEmpty
-                                            ? "?"
-                                            : friendName[0].toUpperCase(),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  "No expenses yet",
+                                  style: GoogleFonts.inter(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  "Add your first shared cost to start tracking who owes you.",
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.inter(
+                                    color: colorScheme.onSurfaceVariant,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      final expenses = expenseSnapshot.data!.docs.toList()
+                        ..sort((a, b) {
+                          final aData = a.data() as Map<String, dynamic>;
+                          final bData = b.data() as Map<String, dynamic>;
+                          final aDate = aData['date'] as Timestamp?;
+                          final bDate = bData['date'] as Timestamp?;
+                          if (aDate == null && bDate == null) return 0;
+                          if (aDate == null) return 1;
+                          if (bDate == null) return -1;
+                          return bDate.compareTo(aDate);
+                        });
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 100),
+                        itemCount: expenses.length,
+                        itemBuilder: (context, index) {
+                          final expense = expenses[index];
+                          final data = expense.data() as Map<String, dynamic>;
+                          final title = data['title'] as String? ?? '';
+                          final date = data['date'] as Timestamp?;
+
+                          // Support both old and new format
+                          final bool hasDebts = data.containsKey('debts');
+                          final List<Map<String, dynamic>> debts;
+                          double totalAmount = 0.0;
+                          final double taxAmount =
+                              (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
+                          final double serviceAmount =
+                              (data['serviceAmount'] as num?)?.toDouble() ??
+                              0.0;
+                          double totalWithCharges =
+                              (data['totalWithCharges'] as num?)?.toDouble() ??
+                              0.0;
+                          bool allPaid = true;
+
+                          if (hasDebts) {
+                            // New format: debts array
+                            final debtsList = data['debts'] as List? ?? [];
+                            debts = debtsList
+                                .map((d) => d as Map<String, dynamic>)
+                                .toList();
+                            for (var debt in debts) {
+                              final amount =
+                                  (debt['amount'] as num?)?.toDouble() ?? 0.0;
+                              totalAmount += amount;
+                              if (!(debt['paid'] as bool? ?? false)) {
+                                allPaid = false;
+                              }
+                            }
+                          } else {
+                            // Old format: single owedBy (for backward compatibility)
+                            final amount =
+                                (data['amount'] as num?)?.toDouble() ?? 0.0;
+                            final owedBy = data['owedBy'] as String? ?? '';
+                            final paid = data['paid'] as bool? ?? false;
+                            totalAmount = amount;
+                            allPaid = paid;
+                            debts = [
+                              {
+                                'friendName': owedBy,
+                                'amount': amount,
+                                'description': '',
+                                'paid': paid,
+                              },
+                            ];
+                          }
+
+                          if (totalWithCharges <= 0) {
+                            totalWithCharges =
+                                totalAmount + taxAmount + serviceAmount;
+                          }
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: 0,
+                            color: allPaid
+                                ? colorScheme.surfaceContainerLow
+                                : colorScheme.surface,
+                            shape: RoundedRectangleBorder(
+                              side: BorderSide(
+                                color: colorScheme.outlineVariant,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: ExpansionTile(
+                              tilePadding: const EdgeInsets.fromLTRB(
+                                14,
+                                6,
+                                10,
+                                6,
+                              ),
+                              childrenPadding: const EdgeInsets.fromLTRB(
+                                10,
+                                0,
+                                10,
+                                10,
+                              ),
+                              shape: const Border(),
+                              collapsedShape: const Border(),
+                              leading: CircleAvatar(
+                                backgroundColor: allPaid
+                                    ? colorScheme.tertiaryContainer
+                                    : colorScheme.primaryContainer,
+                                child: Icon(
+                                  allPaid
+                                      ? Icons.check_rounded
+                                      : Icons.receipt_long_outlined,
+                                  color: allPaid
+                                      ? colorScheme.onTertiaryContainer
+                                      : colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        decoration: allPaid
+                                            ? TextDecoration.lineThrough
+                                            : null,
                                       ),
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
+                                  ),
+                                  if (allPaid)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
                                       child: Text(
-                                        friendName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                        "All Paid",
                                         style: GoogleFonts.inter(
-                                          color: Colors.white,
+                                          color: Colors.green.shade700,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
-                                    Text(
-                                      "RM ${amount.toStringAsFixed(2)}",
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.check_circle_outline,
-                                        size: 21,
-                                      ),
-                                      color: Colors.white,
-                                      tooltip: "Mark all as paid",
-                                      onPressed: () =>
-                                          _markAllDebtsAsPaidForFriend(
-                                            context,
-                                            groupId,
-                                            friendName,
-                                            amount,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              // --- Expenses List (Inner Stream) ---
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-                child: Row(
-                  children: [
-                    Text(
-                      "Expense history",
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      "Newest first",
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('groups')
-                      .doc(groupId)
-                      .collection('expenses')
-                      .orderBy('date', descending: true)
-                      .snapshots(),
-                  builder: (context, expenseSnapshot) {
-                    if (expenseSnapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (!expenseSnapshot.hasData ||
-                        expenseSnapshot.data!.docs.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: colorScheme.primaryContainer,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.receipt_long_outlined,
-                                  size: 32,
-                                  color: colorScheme.onPrimaryContainer,
-                                ),
+                                ],
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                "No expenses yet",
-                                style: GoogleFonts.inter(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                "Add your first shared cost to start tracking who owes you.",
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.inter(
-                                  color: colorScheme.onSurfaceVariant,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-
-                    final expenses = expenseSnapshot.data!.docs;
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 100),
-                      itemCount: expenses.length,
-                      itemBuilder: (context, index) {
-                        final expense = expenses[index];
-                        final data = expense.data() as Map<String, dynamic>;
-                        final title = data['title'] as String? ?? '';
-                        final date = data['date'] as Timestamp?;
-
-                        // Support both old and new format
-                        final bool hasDebts = data.containsKey('debts');
-                        final List<Map<String, dynamic>> debts;
-                        double totalAmount = 0.0;
-                        final double taxAmount =
-                            (data['taxAmount'] as num?)?.toDouble() ?? 0.0;
-                        final double serviceAmount =
-                            (data['serviceAmount'] as num?)?.toDouble() ?? 0.0;
-                        double totalWithCharges =
-                            (data['totalWithCharges'] as num?)?.toDouble() ??
-                            0.0;
-                        bool allPaid = true;
-
-                        if (hasDebts) {
-                          // New format: debts array
-                          final debtsList = data['debts'] as List? ?? [];
-                          debts = debtsList
-                              .map((d) => d as Map<String, dynamic>)
-                              .toList();
-                          for (var debt in debts) {
-                            final amount =
-                                (debt['amount'] as num?)?.toDouble() ?? 0.0;
-                            totalAmount += amount;
-                            if (!(debt['paid'] as bool? ?? false)) {
-                              allPaid = false;
-                            }
-                          }
-                        } else {
-                          // Old format: single owedBy (for backward compatibility)
-                          final amount =
-                              (data['amount'] as num?)?.toDouble() ?? 0.0;
-                          final owedBy = data['owedBy'] as String? ?? '';
-                          final paid = data['paid'] as bool? ?? false;
-                          totalAmount = amount;
-                          allPaid = paid;
-                          debts = [
-                            {
-                              'friendName': owedBy,
-                              'amount': amount,
-                              'description': '',
-                              'paid': paid,
-                            },
-                          ];
-                        }
-
-                        if (totalWithCharges <= 0) {
-                          totalWithCharges =
-                              totalAmount + taxAmount + serviceAmount;
-                        }
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 0,
-                          color: allPaid
-                              ? colorScheme.surfaceContainerLow
-                              : colorScheme.surface,
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(color: colorScheme.outlineVariant),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: ExpansionTile(
-                            tilePadding: const EdgeInsets.fromLTRB(
-                              14,
-                              6,
-                              10,
-                              6,
-                            ),
-                            childrenPadding: const EdgeInsets.fromLTRB(
-                              10,
-                              0,
-                              10,
-                              10,
-                            ),
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            leading: CircleAvatar(
-                              backgroundColor: allPaid
-                                  ? colorScheme.tertiaryContainer
-                                  : colorScheme.primaryContainer,
-                              child: Icon(
-                                allPaid
-                                    ? Icons.check_rounded
-                                    : Icons.receipt_long_outlined,
-                                color: allPaid
-                                    ? colorScheme.onTertiaryContainer
-                                    : colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      decoration: allPaid
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                    ),
-                                  ),
-                                ),
-                                if (allPaid)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.shade50,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      "All Paid",
-                                      style: GoogleFonts.inter(
-                                        color: Colors.green.shade700,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "${debts.length} ${debts.length == 1 ? 'person' : 'people'} • ${date == null ? 'Date unavailable' : _formatDate(date)}",
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (taxAmount > 0 || serviceAmount > 0)
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    "Includes ${_formatCharges(taxAmount, serviceAmount)}",
+                                    "${debts.length} ${debts.length == 1 ? 'person' : 'people'} • ${date == null ? 'Date unavailable' : _formatDate(date)}",
                                     style: GoogleFonts.inter(
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w400,
                                       color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 19,
-                                  ),
-                                  color: colorScheme.onSurfaceVariant,
-                                  tooltip: "Edit Expense",
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => EditExpenseDialog(
-                                        groupId: groupId,
-                                        expenseId: expense.id,
-                                        friends: friends,
-                                        initialTitle: title,
-                                        initialDebts: debts,
-                                        initialTaxPercent:
-                                            (data['taxPercent'] as num?)
-                                                ?.toDouble() ??
-                                            0.0,
-                                        initialServicePercent:
-                                            (data['servicePercent'] as num?)
-                                                ?.toDouble() ??
-                                            0.0,
-                                      ),
-                                    );
-                                  },
-                                ),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
+                                  if (taxAmount > 0 || serviceAmount > 0)
                                     Text(
-                                      "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
+                                      "Includes ${_formatCharges(taxAmount, serviceAmount)}",
                                       style: GoogleFonts.inter(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: allPaid
-                                            ? colorScheme.onSurfaceVariant
-                                            : colorScheme.primary,
-                                        letterSpacing: -0.3,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color: colorScheme.onSurfaceVariant,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            children: debts.map((debt) {
-                              final friendName =
-                                  debt['friendName'] as String? ?? '';
-                              double amount =
-                                  (debt['amount'] as num?)?.toDouble() ?? 0.0;
-
-                              // Calculate final amount with tax/service if needed
-                              final hasBaseAmount = debt['baseAmount'] != null;
-                              if (hasBaseAmount) {
-                                // New format: calculate from baseAmount + per-person tax/service
-                                final baseAmount =
-                                    (debt['baseAmount'] as num?)?.toDouble() ??
-                                    0.0;
-                                final taxForDebt =
-                                    (debt['taxAmount'] as num?)?.toDouble() ??
-                                    0.0;
-                                final serviceForDebt =
-                                    (debt['serviceAmount'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                                amount =
-                                    baseAmount + taxForDebt + serviceForDebt;
-                              } else {
-                                // Backward compatibility: distribute expense-level tax/service proportionally
-                                final expenseBaseTotal = totalAmount;
-                                final expenseTaxAmount = taxAmount;
-                                final expenseServiceAmount = serviceAmount;
-                                if (expenseBaseTotal > 0 &&
-                                    (expenseTaxAmount != 0 ||
-                                        expenseServiceAmount != 0)) {
-                                  final ratio = amount / expenseBaseTotal;
-                                  amount =
-                                      amount +
-                                      expenseTaxAmount * ratio +
-                                      expenseServiceAmount * ratio;
-                                }
-                              }
-
-                              final description =
-                                  debt['description'] as String? ?? '';
-                              final paid = debt['paid'] as bool? ?? false;
-
-                              return ListTile(
-                                dense: true,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                tileColor: colorScheme.surfaceContainerLow,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 2,
-                                ),
-                                leading: Icon(
-                                  paid
-                                      ? Icons.check_circle
-                                      : Icons.person_outline,
-                                  color: paid
-                                      ? colorScheme.tertiary
-                                      : colorScheme.onSurfaceVariant,
-                                  size: 20,
-                                ),
-                                title: Text(
-                                  friendName,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    decoration: paid
-                                        ? TextDecoration.lineThrough
-                                        : null,
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        "RM ${(totalWithCharges > 0 ? totalWithCharges : totalAmount).toStringAsFixed(2)}",
+                                        style: GoogleFonts.inter(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: allPaid
+                                              ? colorScheme.onSurfaceVariant
+                                              : colorScheme.primary,
+                                          letterSpacing: -0.3,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                subtitle: description.isNotEmpty
-                                    ? Text(description)
-                                    : null,
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      "RM ${amount.toStringAsFixed(2)}",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: paid
-                                            ? colorScheme.onSurfaceVariant
-                                            : colorScheme.primary,
-                                      ),
-                                    ),
-                                    if (!paid)
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.check_circle_outline,
-                                          size: 18,
-                                        ),
-                                        color: colorScheme.tertiary,
-                                        tooltip: "Mark as Paid",
-                                        onPressed: () => _markDebtAsPaid(
+                                  PopupMenuButton<String>(
+                                    tooltip: "Expense actions",
+                                    onSelected: (action) {
+                                      if (action == 'edit') {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) =>
+                                              EditExpenseDialog(
+                                                groupId: groupId,
+                                                expenseId: expense.id,
+                                                friends: friends,
+                                                initialTitle: title,
+                                                initialDebts: debts,
+                                                initialTaxPercent:
+                                                    (data['taxPercent'] as num?)
+                                                        ?.toDouble() ??
+                                                    0.0,
+                                                initialServicePercent:
+                                                    (data['servicePercent']
+                                                            as num?)
+                                                        ?.toDouble() ??
+                                                    0.0,
+                                              ),
+                                        );
+                                      } else if (action == 'delete') {
+                                        _confirmDeleteExpense(
                                           context,
-                                          expense.id,
-                                          groupId,
-                                          debts.indexOf(debt),
-                                          amount,
+                                          groupId: groupId,
+                                          expenseId: expense.id,
+                                          title: title,
+                                          currentExpense: data,
+                                        );
+                                      }
+                                    },
+                                    itemBuilder: (context) => const [
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.edit_outlined),
+                                          title: Text("Edit expense"),
                                         ),
                                       ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Icon(Icons.delete_outline),
+                                          title: Text("Delete expense"),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              children: debts.map((debt) {
+                                final friendName =
+                                    debt['friendName'] as String? ?? '';
+                                double amount =
+                                    (debt['amount'] as num?)?.toDouble() ?? 0.0;
+
+                                // Calculate final amount with tax/service if needed
+                                final hasBaseAmount =
+                                    debt['baseAmount'] != null;
+                                if (hasBaseAmount) {
+                                  // New format: calculate from baseAmount + per-person tax/service
+                                  final baseAmount =
+                                      (debt['baseAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  final taxForDebt =
+                                      (debt['taxAmount'] as num?)?.toDouble() ??
+                                      0.0;
+                                  final serviceForDebt =
+                                      (debt['serviceAmount'] as num?)
+                                          ?.toDouble() ??
+                                      0.0;
+                                  amount =
+                                      baseAmount + taxForDebt + serviceForDebt;
+                                } else {
+                                  // Backward compatibility: distribute expense-level tax/service proportionally
+                                  final expenseBaseTotal = totalAmount;
+                                  final expenseTaxAmount = taxAmount;
+                                  final expenseServiceAmount = serviceAmount;
+                                  if (expenseBaseTotal > 0 &&
+                                      (expenseTaxAmount != 0 ||
+                                          expenseServiceAmount != 0)) {
+                                    final ratio = amount / expenseBaseTotal;
+                                    amount =
+                                        amount +
+                                        expenseTaxAmount * ratio +
+                                        expenseServiceAmount * ratio;
+                                  }
+                                }
+
+                                final description =
+                                    debt['description'] as String? ?? '';
+                                final paid = debt['paid'] as bool? ?? false;
+
+                                return ListTile(
+                                  dense: true,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  tileColor: colorScheme.surfaceContainerLow,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 2,
+                                  ),
+                                  leading: Icon(
+                                    paid
+                                        ? Icons.check_circle
+                                        : Icons.person_outline,
+                                    color: paid
+                                        ? colorScheme.tertiary
+                                        : colorScheme.onSurfaceVariant,
+                                    size: 20,
+                                  ),
+                                  title: Text(
+                                    friendName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      decoration: paid
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                    ),
+                                  ),
+                                  subtitle: description.isNotEmpty
+                                      ? Text(description)
+                                      : null,
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        "RM ${amount.toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: paid
+                                              ? colorScheme.onSurfaceVariant
+                                              : colorScheme.primary,
+                                        ),
+                                      ),
+                                      if (!paid)
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 18,
+                                          ),
+                                          color: colorScheme.tertiary,
+                                          tooltip: "Mark as Paid",
+                                          onPressed: () => _markDebtAsPaid(
+                                            context,
+                                            expense.id,
+                                            groupId,
+                                            debts.indexOf(debt),
+                                            amount,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
 
           // 4. FLOATING ACTION BUTTON
@@ -829,6 +967,91 @@ class GroupDetailsScreen extends StatelessWidget {
       charges.add("RM ${serviceAmount.toStringAsFixed(2)} service");
     }
     return charges.join(" + ");
+  }
+
+  Future<void> _confirmDeleteExpense(
+    BuildContext context, {
+    required String groupId,
+    required String expenseId,
+    required String title,
+    required Map<String, dynamic> currentExpense,
+  }) async {
+    final outstandingAmount = outstandingExpenseTotal(currentExpense);
+    final displayTitle = title.trim().isEmpty ? "Untitled expense" : title;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.delete_outline, color: colorScheme.error),
+          title: const Text("Delete expense?"),
+          content: Text(
+            outstandingAmount > 0
+                ? 'Delete "$displayTitle" permanently? The remaining RM ${outstandingAmount.toStringAsFixed(2)} will be removed from the group balance.'
+                : 'Delete "$displayTitle" permanently from expense history?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Cancel"),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+              ),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text("Delete expense"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final groupRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupId);
+      final expenseRef = groupRef.collection('expenses').doc(expenseId);
+
+      final deleted = await FirebaseFirestore.instance.runTransaction<bool>((
+        transaction,
+      ) async {
+        final expenseSnapshot = await transaction.get(expenseRef);
+        if (!expenseSnapshot.exists) return false;
+
+        final latestExpense = expenseSnapshot.data() as Map<String, dynamic>;
+        final balanceDelta = expenseDeletionBalanceDelta(latestExpense);
+        transaction.delete(expenseRef);
+        if (balanceDelta != 0) {
+          transaction.update(groupRef, {
+            'totalOwed': FieldValue.increment(balanceDelta),
+          });
+        }
+        return true;
+      });
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            deleted ? "Expense deleted" : "Expense was already deleted",
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: "delete this expense"),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _markDebtAsPaid(
@@ -899,9 +1122,13 @@ class GroupDetailsScreen extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "mark this debt as paid"),
+            ),
+          ),
+        );
       }
     }
   }
@@ -1016,9 +1243,13 @@ class GroupDetailsScreen extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "mark these debts as paid"),
+            ),
+          ),
+        );
       }
     }
   }
@@ -1087,9 +1318,13 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
       _nameController.clear();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "add this friend"),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -1111,9 +1346,13 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
       setState(() => _friends.remove(friendName));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "remove this friend"),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _removingFriends.remove(friendName));
@@ -1314,7 +1553,7 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
 }
 
 // ==========================================
-// DIALOG 2: ADD EXPENSE (Ledger Style - You paid, friend owes)
+// DIALOG 2: ADD EXPENSE (You paid, friend owes)
 // ==========================================
 
 class AddExpenseDialog extends StatefulWidget {
@@ -1345,6 +1584,411 @@ class DebtEntry {
   });
 }
 
+List<String> _expenseFriendNames(
+  Iterable<dynamic> friends, {
+  Iterable<String> include = const [],
+}) {
+  final names = <String>[];
+  final seen = <String>{};
+  for (final value in [...friends, ...include]) {
+    final name = value.toString().trim();
+    if (name.isEmpty || !seen.add(name.toLowerCase())) continue;
+    names.add(name);
+  }
+  return names;
+}
+
+Future<Set<String>?> _showParticipantPicker(
+  BuildContext context, {
+  required List<String> friends,
+  required Set<String> selected,
+}) {
+  return showModalBottomSheet<Set<String>>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) {
+      final draftSelection = Set<String>.from(selected);
+      return StatefulBuilder(
+        builder: (context, setSheetState) {
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.68,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Select friends",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text("Choose everyone involved in this expense"),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: draftSelection.isEmpty
+                              ? null
+                              : () => setSheetState(draftSelection.clear),
+                          child: const Text("Clear"),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      itemCount: friends.length,
+                      itemBuilder: (context, index) {
+                        final friend = friends[index];
+                        final isSelected = draftSelection.contains(friend);
+                        return CheckboxListTile(
+                          value: isSelected,
+                          title: Text(friend),
+                          secondary: CircleAvatar(
+                            child: Text(friend[0].toUpperCase()),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          onChanged: (value) {
+                            setSheetState(() {
+                              if (value == true) {
+                                draftSelection.add(friend);
+                              } else {
+                                draftSelection.remove(friend);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(
+                        context,
+                        Set<String>.from(draftSelection),
+                      ),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
+                      child: Text(
+                        draftSelection.isEmpty
+                            ? "Use no friends"
+                            : "Use ${draftSelection.length} friend${draftSelection.length == 1 ? '' : 's'}",
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<double?> _showEqualSplitPrompt(BuildContext context) async {
+  final controller = TextEditingController();
+  String? errorText;
+  final result = await showDialog<double>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: const Text("Split equally"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: "Subtotal before tax & service",
+            prefixText: "RM ",
+            hintText: "0.00",
+            helperText: "Additional charges are added afterward",
+            errorText: errorText,
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) {
+            final amount = double.tryParse(controller.text.trim());
+            if (amount == null || !amount.isFinite || amount <= 0) {
+              setDialogState(
+                () => errorText = "Enter an amount greater than zero",
+              );
+              return;
+            }
+            Navigator.pop(context, amount);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () {
+              final amount = double.tryParse(controller.text.trim());
+              if (amount == null || !amount.isFinite || amount <= 0) {
+                setDialogState(
+                  () => errorText = "Enter an amount greater than zero",
+                );
+                return;
+              }
+              Navigator.pop(context, amount);
+            },
+            child: const Text("Apply split"),
+          ),
+        ],
+      ),
+    ),
+  );
+  WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  return result;
+}
+
+class _AdditionalChargesSection extends StatelessWidget {
+  final bool expanded;
+  final TextEditingController taxController;
+  final TextEditingController serviceController;
+  final VoidCallback onToggle;
+  final ValueChanged<String> onChanged;
+
+  const _AdditionalChargesSection({
+    required this.expanded,
+    required this.taxController,
+    required this.serviceController,
+    required this.onToggle,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.percent_outlined, size: 20),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Additional charges",
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        "Tax and service (optional)",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(expanded ? Icons.expand_less : Icons.expand_more),
+              ],
+            ),
+          ),
+        ),
+        if (expanded) ...[
+          const SizedBox(height: 12),
+          Text(
+            "Applied proportionally to every person's share.",
+            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: taxController,
+                  decoration: const InputDecoration(
+                    labelText: "Tax",
+                    hintText: "0",
+                    suffixText: "%",
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: onChanged,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: serviceController,
+                  decoration: const InputDecoration(
+                    labelText: "Service",
+                    hintText: "0",
+                    suffixText: "%",
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: onChanged,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ParticipantAmountCard extends StatelessWidget {
+  final DebtEntry debt;
+  final TextEditingController amountController;
+  final TextEditingController descriptionController;
+  final bool noteExpanded;
+  final VoidCallback onRemove;
+  final VoidCallback onToggleNote;
+  final ValueChanged<String> onAmountChanged;
+  final ValueChanged<String> onDescriptionChanged;
+
+  const _ParticipantAmountCard({
+    required this.debt,
+    required this.amountController,
+    required this.descriptionController,
+    required this.noteExpanded,
+    required this.onRemove,
+    required this.onToggleNote,
+    required this.onAmountChanged,
+    required this.onDescriptionChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 17,
+                  backgroundColor: colorScheme.secondaryContainer,
+                  foregroundColor: colorScheme.onSecondaryContainer,
+                  child: Text(debt.friendName[0].toUpperCase()),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    debt.friendName,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close),
+                  tooltip: "Remove ${debt.friendName}",
+                  onPressed: onRemove,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: amountController,
+              decoration: const InputDecoration(
+                labelText: "Amount owed",
+                prefixText: "RM ",
+                hintText: "0.00",
+                isDense: true,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: onAmountChanged,
+            ),
+            if (noteExpanded) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: "Note (optional)",
+                  hintText: "Their share of dinner",
+                  prefixIcon: const Icon(Icons.notes_outlined),
+                  suffixIcon: IconButton(
+                    onPressed: onToggleNote,
+                    icon: const Icon(Icons.expand_less),
+                    tooltip: "Hide note",
+                  ),
+                  isDense: true,
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                onChanged: onDescriptionChanged,
+              ),
+            ] else
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: onToggleNote,
+                  icon: const Icon(Icons.add_comment_outlined, size: 17),
+                  label: Text(
+                    descriptionController.text.trim().isEmpty
+                        ? "Add note"
+                        : "Edit note",
+                  ),
+                ),
+              ),
+            if (debt.paid)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    "Paid",
+                    style: TextStyle(
+                      color: colorScheme.onTertiaryContainer,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AddExpenseDialogState extends State<AddExpenseDialog> {
   final _titleController = TextEditingController();
   final List<DebtEntry> _debts = [];
@@ -1353,16 +1997,10 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
+  bool _chargesExpanded = false;
+  final Set<String> _expandedNotes = {};
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.friends.isNotEmpty) {
-      _debts.add(DebtEntry(friendName: ''));
-      _amountControllers[0] = TextEditingController();
-      _descriptionControllers[0] = TextEditingController();
-    }
-  }
+  List<String> get _availableFriends => _expenseFriendNames(widget.friends);
 
   double _numberFrom(TextEditingController? controller) {
     return double.tryParse(controller?.text.trim() ?? '') ?? 0;
@@ -1395,46 +2033,122 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     super.dispose();
   }
 
-  void _addDebtEntry() {
+  void _syncParticipantSelection(Set<String> selected) {
+    final existingDebts = <String, DebtEntry>{};
+    final amountValues = <String, String>{};
+    final descriptionValues = <String, String>{};
+    for (var index = 0; index < _debts.length; index++) {
+      final friendName = _debts[index].friendName;
+      existingDebts[friendName] = _debts[index];
+      amountValues[friendName] =
+          _amountControllers[index]?.text ?? _debts[index].amount;
+      descriptionValues[friendName] =
+          _descriptionControllers[index]?.text ?? _debts[index].description;
+    }
+
+    final oldAmountControllers = _amountControllers.values.toList();
+    final oldDescriptionControllers = _descriptionControllers.values.toList();
+
     setState(() {
-      final newIndex = _debts.length;
-      _debts.add(DebtEntry(friendName: ''));
-      _amountControllers[newIndex] = TextEditingController();
-      _descriptionControllers[newIndex] = TextEditingController();
+      _debts.clear();
+      _amountControllers.clear();
+      _descriptionControllers.clear();
+      for (final friendName in _availableFriends) {
+        if (!selected.contains(friendName)) continue;
+        final debt =
+            existingDebts[friendName] ?? DebtEntry(friendName: friendName);
+        final index = _debts.length;
+        _debts.add(debt);
+        _amountControllers[index] = TextEditingController(
+          text: amountValues[friendName] ?? debt.amount,
+        );
+        _descriptionControllers[index] = TextEditingController(
+          text: descriptionValues[friendName] ?? debt.description,
+        );
+      }
+      _expandedNotes.removeWhere((name) => !selected.contains(name));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in oldAmountControllers) {
+        controller.dispose();
+      }
+      for (final controller in oldDescriptionControllers) {
+        controller.dispose();
+      }
     });
   }
 
-  void _removeDebtEntry(int index) {
-    setState(() {
-      _amountControllers[index]?.dispose();
-      _descriptionControllers[index]?.dispose();
-      _amountControllers.remove(index);
-      _descriptionControllers.remove(index);
-      _debts.removeAt(index);
+  bool _hasDraftContent(String friendName) {
+    final index = _debts.indexWhere((debt) => debt.friendName == friendName);
+    if (index < 0) return false;
+    return (_amountControllers[index]?.text.trim().isNotEmpty ?? false) ||
+        (_descriptionControllers[index]?.text.trim().isNotEmpty ?? false);
+  }
 
-      // Reindex controllers
-      final newAmountControllers = <int, TextEditingController>{};
-      final newDescriptionControllers = <int, TextEditingController>{};
-      for (int i = 0; i < _debts.length; i++) {
-        if (_amountControllers.containsKey(i + 1)) {
-          newAmountControllers[i] = _amountControllers[i + 1]!;
-        } else {
-          newAmountControllers[i] = TextEditingController(
-            text: _debts[i].amount,
-          );
-        }
-        if (_descriptionControllers.containsKey(i + 1)) {
-          newDescriptionControllers[i] = _descriptionControllers[i + 1]!;
-        } else {
-          newDescriptionControllers[i] = TextEditingController(
-            text: _debts[i].description,
-          );
-        }
+  Future<bool> _confirmParticipantRemoval(Set<String> removed) async {
+    final hasDraftContent = removed.any(_hasDraftContent);
+    if (!hasDraftContent) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Remove selected friend?"),
+            content: const Text(
+              "The amount or note entered for this friend will be discarded.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Keep friend"),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Remove"),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _selectParticipants() async {
+    final current = _debts.map((debt) => debt.friendName).toSet();
+    final selected = await _showParticipantPicker(
+      context,
+      friends: _availableFriends,
+      selected: current,
+    );
+    if (selected == null || !mounted) return;
+    final removed = current.difference(selected);
+    if (removed.isNotEmpty && !await _confirmParticipantRemoval(removed)) {
+      return;
+    }
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _removeParticipant(int index) async {
+    final friendName = _debts[index].friendName;
+    if (!await _confirmParticipantRemoval({friendName}) || !mounted) return;
+    final selected = _debts.map((debt) => debt.friendName).toSet()
+      ..remove(friendName);
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _splitEqually() async {
+    if (_debts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Select friends before splitting.")),
+      );
+      return;
+    }
+    final total = await _showEqualSplitPrompt(context);
+    if (total == null || !mounted) return;
+    final shares = splitCurrencyTotal(total, _debts.length);
+    setState(() {
+      for (var index = 0; index < _debts.length; index++) {
+        final value = shares[index].toStringAsFixed(2);
+        _debts[index].amount = value;
+        _amountControllers[index]?.text = value;
       }
-      _amountControllers.clear();
-      _descriptionControllers.clear();
-      _amountControllers.addAll(newAmountControllers);
-      _descriptionControllers.addAll(newDescriptionControllers);
     });
   }
 
@@ -1451,7 +2165,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     if (_debts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please add at least one friend who owes you."),
+          content: Text("Select at least one friend who owes you."),
         ),
       );
       return;
@@ -1488,7 +2202,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
       try {
         final baseAmount = double.parse(amountText);
-        if (baseAmount <= 0) {
+        if (!baseAmount.isFinite || baseAmount <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Amount must be greater than 0.")),
           );
@@ -1581,9 +2295,13 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: "save this expense"),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1593,7 +2311,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (widget.friends.isEmpty) {
+    if (_availableFriends.isEmpty) {
       return AlertDialog(
         icon: Icon(Icons.group_add_outlined, color: colorScheme.primary),
         title: const Text("Add a friend first"),
@@ -1602,9 +2320,24 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
           textAlign: TextAlign.center,
         ),
         actions: [
-          FilledButton(
+          TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Got it"),
+            child: const Text("Cancel"),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await showDialog<void>(
+                context: context,
+                builder: (context) => ManageFriendsDialog(
+                  groupId: widget.groupId,
+                  currentFriends: widget.friends,
+                ),
+              );
+              if (mounted) navigator.pop();
+            },
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text("Manage friends"),
           ),
         ],
       );
@@ -1676,58 +2409,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                 textCapitalization: TextCapitalization.sentences,
                 textInputAction: TextInputAction.next,
               ),
-              const SizedBox(height: 24),
-              const Text(
-                "Additional charges",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Applied proportionally to every person's share.",
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _taxPercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Tax",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _servicePercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Service",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   const Expanded(
@@ -1743,19 +2425,36 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                         ),
                         SizedBox(height: 3),
                         Text(
-                          "Add each person's individual share",
+                          "Select friends once, then enter custom amounts",
                           style: TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
                   FilledButton.tonalIcon(
-                    onPressed: _addDebtEntry,
-                    icon: const Icon(Icons.person_add_alt_1, size: 18),
-                    label: const Text("Add"),
+                    onPressed: _selectParticipants,
+                    icon: const Icon(Icons.group_add_outlined, size: 18),
+                    label: Text(_debts.isEmpty ? "Select" : "Change"),
                   ),
                 ],
               ),
+              if (_debts.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      "${_debts.length} selected",
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _splitEqually,
+                      icon: const Icon(Icons.balance_outlined, size: 18),
+                      label: const Text("Split equally"),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               if (_debts.isEmpty)
                 Container(
@@ -1772,149 +2471,43 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                     children: [
                       Icon(Icons.group_outlined),
                       SizedBox(height: 8),
-                      Text("No shares added yet"),
+                      Text("Select the friends involved in this expense"),
                     ],
                   ),
                 )
               else
                 ...List.generate(_debts.length, (index) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 0,
-                    color: colorScheme.surface,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 30,
-                                height: 30,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: colorScheme.secondaryContainer,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Text(
-                                  "${index + 1}",
-                                  style: TextStyle(
-                                    color: colorScheme.onSecondaryContainer,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  "Share ${index + 1}",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                visualDensity: VisualDensity.compact,
-                                icon: Icon(
-                                  Icons.delete_outline,
-                                  color: colorScheme.error,
-                                ),
-                                onPressed: () => _removeDebtEntry(index),
-                                tooltip: "Remove share",
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey(
-                                    "friend-$index-${_debts[index].friendName}",
-                                  ),
-                                  initialValue: _debts[index].friendName.isEmpty
-                                      ? null
-                                      : _debts[index].friendName,
-                                  decoration: const InputDecoration(
-                                    labelText: "Friend",
-                                    prefixIcon: Icon(Icons.person_outline),
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  items: widget.friends
-                                      .map<DropdownMenuItem<String>>((
-                                        dynamic value,
-                                      ) {
-                                        return DropdownMenuItem<String>(
-                                          value: value.toString(),
-                                          child: Text(value.toString()),
-                                        );
-                                      })
-                                      .toList(),
-                                  onChanged: (String? newValue) {
-                                    setState(() {
-                                      _debts[index].friendName = newValue ?? '';
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _amountControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].amount,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Base amount",
-                              prefixText: "RM ",
-                              hintText: "0.00",
-                              helperText: "Before tax and service",
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            onChanged: (value) {
-                              _debts[index].amount = value;
-                              setState(() {});
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _descriptionControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].description,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Note (optional)",
-                              hintText: "Their share of dinner",
-                              prefixIcon: Icon(Icons.notes_outlined),
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            textCapitalization: TextCapitalization.sentences,
-                            onChanged: (value) {
-                              _debts[index].description = value;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+                  final debt = _debts[index];
+                  return _ParticipantAmountCard(
+                    debt: debt,
+                    amountController: _amountControllers[index]!,
+                    descriptionController: _descriptionControllers[index]!,
+                    noteExpanded: _expandedNotes.contains(debt.friendName),
+                    onRemove: () => _removeParticipant(index),
+                    onToggleNote: () => setState(() {
+                      if (!_expandedNotes.add(debt.friendName)) {
+                        _expandedNotes.remove(debt.friendName);
+                      }
+                    }),
+                    onAmountChanged: (value) {
+                      debt.amount = value;
+                      setState(() {});
+                    },
+                    onDescriptionChanged: (value) {
+                      debt.description = value;
+                    },
                   );
                 }),
-              const SizedBox(height: 4),
+              const SizedBox(height: 12),
+              _AdditionalChargesSection(
+                expanded: _chargesExpanded,
+                taxController: _taxPercentController,
+                serviceController: _servicePercentController,
+                onToggle: () =>
+                    setState(() => _chargesExpanded = !_chargesExpanded),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -2036,6 +2629,15 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
+  bool _chargesExpanded = false;
+  final Set<String> _expandedNotes = {};
+
+  List<String> get _availableFriends => _expenseFriendNames(
+    widget.friends,
+    include: widget.initialDebts.map(
+      (debt) => debt['friendName']?.toString() ?? '',
+    ),
+  );
 
   double _numberFrom(TextEditingController? controller) {
     return double.tryParse(controller?.text.trim() ?? '') ?? 0;
@@ -2052,6 +2654,9 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
           _numberFrom(_servicePercentController)) /
       100;
 
+  int get _selectedFriendCount =>
+      _debts.map((debt) => debt.friendName).toSet().length;
+
   @override
   void initState() {
     super.initState();
@@ -2062,10 +2667,13 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     _servicePercentController.text = widget.initialServicePercent == 0.0
         ? ''
         : widget.initialServicePercent.toString();
+    _chargesExpanded =
+        widget.initialTaxPercent != 0 || widget.initialServicePercent != 0;
 
     // Convert initial debts to DebtEntry objects
     for (var debt in widget.initialDebts) {
       final friendName = debt['friendName'] as String? ?? '';
+      if (friendName.trim().isEmpty) continue;
       final amountWithCharges = (debt['amount'] as num?)?.toDouble() ?? 0.0;
       final baseAmount =
           (debt['baseAmount'] as num?)?.toDouble() ?? amountWithCharges;
@@ -2103,46 +2711,143 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     super.dispose();
   }
 
-  void _addDebtEntry() {
-    setState(() {
-      final newIndex = _debts.length;
-      _debts.add(DebtEntry(friendName: ''));
-      _amountControllers[newIndex] = TextEditingController();
-      _descriptionControllers[newIndex] = TextEditingController();
-    });
-  }
+  void _syncParticipantSelection(Set<String> selected) {
+    final existingDebts = <String, List<DebtEntry>>{};
+    final amountValues = <DebtEntry, String>{};
+    final descriptionValues = <DebtEntry, String>{};
+    for (var index = 0; index < _debts.length; index++) {
+      final debt = _debts[index];
+      existingDebts.putIfAbsent(debt.friendName, () => []).add(debt);
+      amountValues[debt] = _amountControllers[index]?.text ?? debt.amount;
+      descriptionValues[debt] =
+          _descriptionControllers[index]?.text ?? debt.description;
+    }
 
-  void _removeDebtEntry(int index) {
-    setState(() {
-      _amountControllers[index]?.dispose();
-      _descriptionControllers[index]?.dispose();
-      _amountControllers.remove(index);
-      _descriptionControllers.remove(index);
-      _debts.removeAt(index);
+    final oldAmountControllers = _amountControllers.values.toList();
+    final oldDescriptionControllers = _descriptionControllers.values.toList();
 
-      // Reindex controllers
-      final newAmountControllers = <int, TextEditingController>{};
-      final newDescriptionControllers = <int, TextEditingController>{};
-      for (int i = 0; i < _debts.length; i++) {
-        if (_amountControllers.containsKey(i + 1)) {
-          newAmountControllers[i] = _amountControllers[i + 1]!;
-        } else {
-          newAmountControllers[i] = TextEditingController(
-            text: _debts[i].amount,
+    setState(() {
+      _debts.clear();
+      _amountControllers.clear();
+      _descriptionControllers.clear();
+      for (final friendName in _availableFriends) {
+        if (!selected.contains(friendName)) continue;
+        final debtsForFriend =
+            existingDebts[friendName] ?? [DebtEntry(friendName: friendName)];
+        for (final debt in debtsForFriend) {
+          final index = _debts.length;
+          _debts.add(debt);
+          _amountControllers[index] = TextEditingController(
+            text: amountValues[debt] ?? debt.amount,
           );
-        }
-        if (_descriptionControllers.containsKey(i + 1)) {
-          newDescriptionControllers[i] = _descriptionControllers[i + 1]!;
-        } else {
-          newDescriptionControllers[i] = TextEditingController(
-            text: _debts[i].description,
+          _descriptionControllers[index] = TextEditingController(
+            text: descriptionValues[debt] ?? debt.description,
           );
         }
       }
-      _amountControllers.clear();
-      _descriptionControllers.clear();
-      _amountControllers.addAll(newAmountControllers);
-      _descriptionControllers.addAll(newDescriptionControllers);
+      _expandedNotes.removeWhere((name) => !selected.contains(name));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in oldAmountControllers) {
+        controller.dispose();
+      }
+      for (final controller in oldDescriptionControllers) {
+        controller.dispose();
+      }
+    });
+  }
+
+  bool _hasDraftContent(String friendName) {
+    for (var index = 0; index < _debts.length; index++) {
+      if (_debts[index].friendName != friendName) continue;
+      if ((_amountControllers[index]?.text.trim().isNotEmpty ?? false) ||
+          (_descriptionControllers[index]?.text.trim().isNotEmpty ?? false)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _confirmParticipantRemoval(Set<String> removed) async {
+    final hasDraftContent = removed.any(_hasDraftContent);
+    if (!hasDraftContent) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Remove selected friend?"),
+            content: const Text(
+              "Their amount, note, and payment status will be removed from this expense.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Keep friend"),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Remove"),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _selectParticipants() async {
+    final current = _debts.map((debt) => debt.friendName).toSet();
+    final selected = await _showParticipantPicker(
+      context,
+      friends: _availableFriends,
+      selected: current,
+    );
+    if (selected == null || !mounted) return;
+    final removed = current.difference(selected);
+    if (removed.isNotEmpty && !await _confirmParticipantRemoval(removed)) {
+      return;
+    }
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _removeParticipant(int index) async {
+    final friendName = _debts[index].friendName;
+    if (!await _confirmParticipantRemoval({friendName}) || !mounted) return;
+    final selected = _debts.map((debt) => debt.friendName).toSet()
+      ..remove(friendName);
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _splitEqually() async {
+    if (_debts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Select friends before splitting.")),
+      );
+      return;
+    }
+    final total = await _showEqualSplitPrompt(context);
+    if (total == null || !mounted) return;
+    final friendNames = _debts.map((debt) => debt.friendName).toSet().toList();
+    final friendShares = splitCurrencyTotal(total, friendNames.length);
+    setState(() {
+      for (
+        var friendIndex = 0;
+        friendIndex < friendNames.length;
+        friendIndex++
+      ) {
+        final rowIndexes = <int>[
+          for (var index = 0; index < _debts.length; index++)
+            if (_debts[index].friendName == friendNames[friendIndex]) index,
+        ];
+        final rowShares = splitCurrencyTotal(
+          friendShares[friendIndex],
+          rowIndexes.length,
+        );
+        for (var rowIndex = 0; rowIndex < rowIndexes.length; rowIndex++) {
+          final debtIndex = rowIndexes[rowIndex];
+          final value = rowShares[rowIndex].toStringAsFixed(2);
+          _debts[debtIndex].amount = value;
+          _amountControllers[debtIndex]?.text = value;
+        }
+      }
     });
   }
 
@@ -2159,7 +2864,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     if (_debts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please add at least one friend who owes you."),
+          content: Text("Select at least one friend who owes you."),
         ),
       );
       return;
@@ -2196,7 +2901,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
 
       try {
         final baseAmount = double.parse(amountText);
-        if (baseAmount <= 0) {
+        if (!baseAmount.isFinite || baseAmount <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Amount must be greater than 0.")),
           );
@@ -2300,9 +3005,13 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: "update this expense"),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -2312,7 +3021,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (widget.friends.isEmpty) {
+    if (_availableFriends.isEmpty) {
       return AlertDialog(
         title: const Text("Edit Expense"),
         content: const Text(
@@ -2321,7 +3030,22 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
+            child: const Text("Cancel"),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await showDialog<void>(
+                context: context,
+                builder: (context) => ManageFriendsDialog(
+                  groupId: widget.groupId,
+                  currentFriends: widget.friends,
+                ),
+              );
+              if (mounted) navigator.pop();
+            },
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text("Manage friends"),
           ),
         ],
       );
@@ -2392,49 +3116,6 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 20),
-              const Text(
-                "Additional charges",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _taxPercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Tax",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _servicePercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Service",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
               Row(
                 children: [
                   const Expanded(
@@ -2450,171 +3131,89 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                         ),
                         SizedBox(height: 3),
                         Text(
-                          "Paid shares keep their current status",
+                          "Select friends once; paid shares keep their status",
                           style: TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
                   FilledButton.tonalIcon(
-                    onPressed: _addDebtEntry,
-                    icon: const Icon(Icons.person_add_alt_1, size: 18),
-                    label: const Text("Add"),
+                    onPressed: _selectParticipants,
+                    icon: const Icon(Icons.group_add_outlined, size: 18),
+                    label: Text(_debts.isEmpty ? "Select" : "Change"),
                   ),
                 ],
               ),
+              if (_debts.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      "$_selectedFriendCount selected",
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _splitEqually,
+                      icon: const Icon(Icons.balance_outlined, size: 18),
+                      label: const Text("Split equally"),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               if (_debts.isEmpty)
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 28,
+                  ),
                   decoration: BoxDecoration(
                     color: AppPalette.surfaceElevated,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Center(
-                    child: Text(
-                      "Tap 'Add Friend' to add someone who owes you",
-                      style: TextStyle(color: AppPalette.secondaryLabel),
-                    ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.group_outlined),
+                      SizedBox(height: 8),
+                      Text("Select the friends involved in this expense"),
+                    ],
                   ),
                 )
               else
                 ...List.generate(_debts.length, (index) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey(
-                                    "edit-friend-$index-${_debts[index].friendName}",
-                                  ),
-                                  initialValue: _debts[index].friendName.isEmpty
-                                      ? null
-                                      : _debts[index].friendName,
-                                  decoration: const InputDecoration(
-                                    labelText: "Friend",
-                                    prefixIcon: Icon(Icons.person_outline),
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  items: widget.friends
-                                      .map<DropdownMenuItem<String>>((
-                                        dynamic value,
-                                      ) {
-                                        return DropdownMenuItem<String>(
-                                          value: value.toString(),
-                                          child: Text(value.toString()),
-                                        );
-                                      })
-                                      .toList(),
-                                  onChanged: (String? newValue) {
-                                    setState(() {
-                                      _debts[index].friendName = newValue ?? '';
-                                    });
-                                  },
-                                ),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  Icons.delete_outline,
-                                  color: colorScheme.error,
-                                ),
-                                onPressed: () => _removeDebtEntry(index),
-                                tooltip: "Remove",
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _amountControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].amount,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Base amount (before tax/service)",
-                              prefixText: "RM ",
-                              hintText: "0.00",
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            onChanged: (value) {
-                              _debts[index].amount = value;
-                              setState(() {});
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _descriptionControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].description,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Note (optional)",
-                              hintText: "Their share of dinner",
-                              prefixIcon: Icon(Icons.notes_outlined),
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            textCapitalization: TextCapitalization.sentences,
-                            onChanged: (value) {
-                              _debts[index].description = value;
-                            },
-                          ),
-                          if (_debts[index].paid)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.tertiaryContainer,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_outline,
-                                      color: colorScheme.onTertiaryContainer,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      "This debt is marked as paid",
-                                      style: TextStyle(
-                                        color: colorScheme.onTertiaryContainer,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+                  final debt = _debts[index];
+                  return _ParticipantAmountCard(
+                    debt: debt,
+                    amountController: _amountControllers[index]!,
+                    descriptionController: _descriptionControllers[index]!,
+                    noteExpanded: _expandedNotes.contains(debt.friendName),
+                    onRemove: () => _removeParticipant(index),
+                    onToggleNote: () => setState(() {
+                      if (!_expandedNotes.add(debt.friendName)) {
+                        _expandedNotes.remove(debt.friendName);
+                      }
+                    }),
+                    onAmountChanged: (value) {
+                      debt.amount = value;
+                      setState(() {});
+                    },
+                    onDescriptionChanged: (value) {
+                      debt.description = value;
+                    },
                   );
                 }),
+              const SizedBox(height: 12),
+              _AdditionalChargesSection(
+                expanded: _chargesExpanded,
+                taxController: _taxPercentController,
+                serviceController: _servicePercentController,
+                onToggle: () =>
+                    setState(() => _chargesExpanded = !_chargesExpanded),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

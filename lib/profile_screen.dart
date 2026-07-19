@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import 'network_status.dart';
 import 'package:image_picker/image_picker.dart';
 import 'app_theme.dart';
 
@@ -31,21 +33,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadUserProfile() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_user.uid)
-        .get();
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_user.uid)
+          .get();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    final data = doc.data();
-    _displayNameController.text = data != null && data['displayName'] is String
-        ? data['displayName'] as String
-        : '';
-    _photoUrl = data != null && data['photoUrl'] is String
-        ? data['photoUrl'] as String
-        : null;
-    setState(() {});
+      final data = doc.data();
+      _displayNameController.text =
+          data != null && data['displayName'] is String
+          ? data['displayName'] as String
+          : '';
+      _photoUrl = data != null && data['photoUrl'] is String
+          ? data['photoUrl'] as String
+          : null;
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: 'load your profile'),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _pickImage() async {
@@ -92,7 +106,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // If upload fails, show specific error with helpful message
           if (!mounted) return;
 
-          String errorMessage = 'Error uploading image: $uploadError';
+          String errorMessage = networkAwareErrorMessage(
+            uploadError,
+            action: 'upload your profile picture',
+          );
           if (uploadError.toString().contains('permission') ||
               uploadError.toString().contains('object-not-found')) {
             errorMessage +=
@@ -132,7 +149,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving to database: $firestoreError'),
+            content: Text(
+              networkAwareErrorMessage(
+                firestoreError,
+                action: 'update your profile',
+              ),
+            ),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -141,7 +163,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unexpected error: $e'),
+          content: Text(
+            networkAwareErrorMessage(e, action: 'update your profile'),
+          ),
           duration: const Duration(seconds: 4),
         ),
       );

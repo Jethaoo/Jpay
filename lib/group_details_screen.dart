@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_theme.dart';
 import 'debt_calculations.dart';
+import 'edit_group_name_dialog.dart';
+import 'network_status.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
@@ -35,6 +37,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.groupId != widget.groupId) {
       _expensesStream = _createExpensesStream();
+    }
+  }
+
+  Future<void> _showEditGroupName(String currentName) async {
+    final updatedName = await showDialog<String>(
+      context: context,
+      builder: (context) =>
+          EditGroupNameDialog(groupId: groupId, currentName: currentName),
+    );
+
+    if (updatedName != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Group renamed to "$updatedName"')),
+      );
     }
   }
 
@@ -91,13 +107,17 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         // 2. DATA EXTRACTION
         final groupData = groupSnapshot.data!.data() as Map<String, dynamic>;
         final List<dynamic> friends = groupData['friends'] ?? [];
+        final storedGroupName = (groupData['name'] as String?)?.trim();
+        final displayedGroupName = storedGroupName?.isNotEmpty == true
+            ? storedGroupName!
+            : groupName;
         final colorScheme = Theme.of(context).colorScheme;
 
         return Scaffold(
           backgroundColor: AppPalette.background,
           appBar: AppBar(
             title: Text(
-              groupName,
+              displayedGroupName,
               style: GoogleFonts.inter(
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.3,
@@ -105,6 +125,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
             elevation: 0,
             actions: [
+              IconButton(
+                onPressed: () => _showEditGroupName(displayedGroupName),
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: "Edit group name",
+              ),
               IconButton(
                 onPressed: () {
                   showDialog(
@@ -962,7 +987,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           title: const Text("Delete expense?"),
           content: Text(
             outstandingAmount > 0
-                ? 'Delete "$displayTitle" permanently? The remaining RM ${outstandingAmount.toStringAsFixed(2)} will be removed from the ledger balance.'
+                ? 'Delete "$displayTitle" permanently? The remaining RM ${outstandingAmount.toStringAsFixed(2)} will be removed from the group balance.'
                 : 'Delete "$displayTitle" permanently from expense history?',
           ),
           actions: [
@@ -1019,9 +1044,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Unable to delete expense: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: "delete this expense"),
+          ),
+        ),
+      );
     }
   }
 
@@ -1093,9 +1122,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "mark this debt as paid"),
+            ),
+          ),
+        );
       }
     }
   }
@@ -1210,9 +1243,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "mark these debts as paid"),
+            ),
+          ),
+        );
       }
     }
   }
@@ -1281,9 +1318,13 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
       _nameController.clear();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "add this friend"),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -1305,9 +1346,13 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
       setState(() => _friends.remove(friendName));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              networkAwareErrorMessage(e, action: "remove this friend"),
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _removingFriends.remove(friendName));
@@ -1508,7 +1553,7 @@ class _ManageFriendsDialogState extends State<ManageFriendsDialog> {
 }
 
 // ==========================================
-// DIALOG 2: ADD EXPENSE (Ledger Style - You paid, friend owes)
+// DIALOG 2: ADD EXPENSE (You paid, friend owes)
 // ==========================================
 
 class AddExpenseDialog extends StatefulWidget {
@@ -2250,9 +2295,13 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: "save this expense"),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -2956,9 +3005,13 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            networkAwareErrorMessage(e, action: "update this expense"),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

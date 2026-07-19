@@ -289,95 +289,138 @@ class GroupDetailsScreen extends StatelessWidget {
                           );
                         }
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "TOTAL TO COLLECT",
-                              style: GoogleFonts.inter(
-                                color: Colors.white.withValues(alpha: 0.72),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "RM ${outstandingTotal.toStringAsFixed(2)}",
-                              style: GoogleFonts.inter(
-                                color: Colors.white,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -1,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            ...balances.entries.map((entry) {
-                              final friendName = entry.key;
-                              final amount = entry.value;
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(15),
+                        final balanceEntries = balances.entries.toList();
+                        final expandedHeight = (balanceEntries.length * 66.0)
+                            .clamp(66.0, 250.0)
+                            .toDouble();
+
+                        return Theme(
+                          data: Theme.of(
+                            context,
+                          ).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            initiallyExpanded: false,
+                            maintainState: true,
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            iconColor: Colors.white,
+                            collapsedIconColor: Colors.white,
+                            title: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "TOTAL TO COLLECT",
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.8,
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 17,
-                                      backgroundColor: Colors.white.withValues(
-                                        alpha: 0.18,
+                                const SizedBox(height: 3),
+                                Text(
+                                  "RM ${outstandingTotal.toStringAsFixed(2)}",
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.8,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              "${balanceEntries.length} ${balanceEntries.length == 1 ? 'friend owes' : 'friends owe'} you • Tap to view",
+                              style: GoogleFonts.inter(
+                                color: Colors.white.withValues(alpha: 0.76),
+                                fontSize: 12,
+                              ),
+                            ),
+                            children: [
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                height: expandedHeight,
+                                child: ListView.separated(
+                                  primary: false,
+                                  padding: EdgeInsets.zero,
+                                  itemCount: balanceEntries.length,
+                                  separatorBuilder: (context, index) =>
+                                      const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    final entry = balanceEntries[index];
+                                    final friendName = entry.key;
+                                    final amount = entry.value;
+                                    return Container(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        12,
+                                        8,
+                                        6,
+                                        8,
                                       ),
-                                      child: Text(
-                                        friendName.isEmpty
-                                            ? "?"
-                                            : friendName[0].toUpperCase(),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.12,
                                         ),
+                                        borderRadius: BorderRadius.circular(15),
                                       ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        friendName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      "RM ${amount.toStringAsFixed(2)}",
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.check_circle_outline,
-                                        size: 21,
-                                      ),
-                                      color: Colors.white,
-                                      tooltip: "Mark all as paid",
-                                      onPressed: () =>
-                                          _markAllDebtsAsPaidForFriend(
-                                            context,
-                                            groupId,
-                                            friendName,
-                                            amount,
+                                      child: Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 17,
+                                            backgroundColor: Colors.white
+                                                .withValues(alpha: 0.18),
+                                            child: Text(
+                                              friendName.isEmpty
+                                                  ? "?"
+                                                  : friendName[0].toUpperCase(),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
                                           ),
-                                    ),
-                                  ],
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              friendName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: GoogleFonts.inter(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            "RM ${amount.toStringAsFixed(2)}",
+                                            style: GoogleFonts.inter(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.check_circle_outline,
+                                              size: 21,
+                                            ),
+                                            color: Colors.white,
+                                            tooltip: "Mark all as paid",
+                                            onPressed: () =>
+                                                _markAllDebtsAsPaidForFriend(
+                                                  context,
+                                                  groupId,
+                                                  friendName,
+                                                  amount,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            }),
-                          ],
+                              ),
+                            ],
+                          ),
                         );
                       },
                     ),
@@ -625,34 +668,6 @@ class GroupDetailsScreen extends StatelessWidget {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 19,
-                                  ),
-                                  color: colorScheme.onSurfaceVariant,
-                                  tooltip: "Edit Expense",
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => EditExpenseDialog(
-                                        groupId: groupId,
-                                        expenseId: expense.id,
-                                        friends: friends,
-                                        initialTitle: title,
-                                        initialDebts: debts,
-                                        initialTaxPercent:
-                                            (data['taxPercent'] as num?)
-                                                ?.toDouble() ??
-                                            0.0,
-                                        initialServicePercent:
-                                            (data['servicePercent'] as num?)
-                                                ?.toDouble() ??
-                                            0.0,
-                                      ),
-                                    );
-                                  },
-                                ),
                                 Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -666,6 +681,57 @@ class GroupDetailsScreen extends StatelessWidget {
                                             ? colorScheme.onSurfaceVariant
                                             : colorScheme.primary,
                                         letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                PopupMenuButton<String>(
+                                  tooltip: "Expense actions",
+                                  onSelected: (action) {
+                                    if (action == 'edit') {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => EditExpenseDialog(
+                                          groupId: groupId,
+                                          expenseId: expense.id,
+                                          friends: friends,
+                                          initialTitle: title,
+                                          initialDebts: debts,
+                                          initialTaxPercent:
+                                              (data['taxPercent'] as num?)
+                                                  ?.toDouble() ??
+                                              0.0,
+                                          initialServicePercent:
+                                              (data['servicePercent'] as num?)
+                                                  ?.toDouble() ??
+                                              0.0,
+                                        ),
+                                      );
+                                    } else if (action == 'delete') {
+                                      _confirmDeleteExpense(
+                                        context,
+                                        groupId: groupId,
+                                        expenseId: expense.id,
+                                        title: title,
+                                        currentExpense: data,
+                                      );
+                                    }
+                                  },
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem(
+                                      value: 'edit',
+                                      child: ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: Icon(Icons.edit_outlined),
+                                        title: Text("Edit expense"),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: Icon(Icons.delete_outline),
+                                        title: Text("Delete expense"),
                                       ),
                                     ),
                                   ],
@@ -829,6 +895,87 @@ class GroupDetailsScreen extends StatelessWidget {
       charges.add("RM ${serviceAmount.toStringAsFixed(2)} service");
     }
     return charges.join(" + ");
+  }
+
+  Future<void> _confirmDeleteExpense(
+    BuildContext context, {
+    required String groupId,
+    required String expenseId,
+    required String title,
+    required Map<String, dynamic> currentExpense,
+  }) async {
+    final outstandingAmount = outstandingExpenseTotal(currentExpense);
+    final displayTitle = title.trim().isEmpty ? "Untitled expense" : title;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.delete_outline, color: colorScheme.error),
+          title: const Text("Delete expense?"),
+          content: Text(
+            outstandingAmount > 0
+                ? 'Delete "$displayTitle" permanently? The remaining RM ${outstandingAmount.toStringAsFixed(2)} will be removed from the ledger balance.'
+                : 'Delete "$displayTitle" permanently from expense history?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Cancel"),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+              ),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text("Delete expense"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final groupRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupId);
+      final expenseRef = groupRef.collection('expenses').doc(expenseId);
+
+      final deleted = await FirebaseFirestore.instance.runTransaction<bool>((
+        transaction,
+      ) async {
+        final expenseSnapshot = await transaction.get(expenseRef);
+        if (!expenseSnapshot.exists) return false;
+
+        final latestExpense = expenseSnapshot.data() as Map<String, dynamic>;
+        final balanceDelta = expenseDeletionBalanceDelta(latestExpense);
+        transaction.delete(expenseRef);
+        if (balanceDelta != 0) {
+          transaction.update(groupRef, {
+            'totalOwed': FieldValue.increment(balanceDelta),
+          });
+        }
+        return true;
+      });
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            deleted ? "Expense deleted" : "Expense was already deleted",
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Unable to delete expense: $e")));
+    }
   }
 
   Future<void> _markDebtAsPaid(

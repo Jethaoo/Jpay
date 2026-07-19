@@ -52,3 +52,8 @@ double outstandingExpenseTotal(Map<String, dynamic> expense) {
   if (expense['paid'] == true) return 0;
   return roundCurrency((expense['amount'] as num?)?.toDouble() ?? 0);
 }
+
+double expenseDeletionBalanceDelta(Map<String, dynamic> expense) {
+  final outstanding = outstandingExpenseTotal(expense);
+  return outstanding == 0 ? 0 : -outstanding;
+}

@@ -57,4 +57,39 @@ void main() {
       expect(splitCurrencyTotal(10, 0), isEmpty);
     });
   });
+
+  group('expenseDeletionBalanceDelta', () {
+    test('subtracts only the unpaid amount including charges', () {
+      final expense = <String, dynamic>{
+        'debts': [
+          {
+            'baseAmount': 10.0,
+            'taxAmount': 0.6,
+            'serviceAmount': 1.0,
+            'paid': false,
+          },
+          {'amount': 20.0, 'paid': true},
+        ],
+      };
+
+      expect(expenseDeletionBalanceDelta(expense), -11.6);
+    });
+
+    test('does not change the balance for a fully paid expense', () {
+      final expense = <String, dynamic>{
+        'debts': [
+          {'amount': 20.0, 'paid': true},
+        ],
+      };
+
+      expect(expenseDeletionBalanceDelta(expense), 0);
+    });
+
+    test('supports an unpaid legacy expense', () {
+      expect(
+        expenseDeletionBalanceDelta({'amount': 42.5, 'paid': false}),
+        -42.5,
+      );
+    });
+  });
 }

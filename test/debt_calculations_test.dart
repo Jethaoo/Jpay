@@ -37,4 +37,24 @@ void main() {
       expect(roundCurrency(10.005), 10.01);
     });
   });
+
+  group('splitCurrencyTotal', () {
+    test('splits evenly without changing the total', () {
+      final shares = splitCurrencyTotal(30, 3);
+
+      expect(shares, [10.0, 10.0, 10.0]);
+      expect(shares.fold<double>(0, (sum, share) => sum + share), 30.0);
+    });
+
+    test('distributes remainder cents deterministically', () {
+      final shares = splitCurrencyTotal(10, 3);
+
+      expect(shares, [3.34, 3.33, 3.33]);
+      expect(roundCurrency(shares.reduce((a, b) => a + b)), 10.0);
+    });
+
+    test('returns no shares when there are no participants', () {
+      expect(splitCurrencyTotal(10, 0), isEmpty);
+    });
+  });
 }

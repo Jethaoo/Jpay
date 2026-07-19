@@ -1345,6 +1345,411 @@ class DebtEntry {
   });
 }
 
+List<String> _expenseFriendNames(
+  Iterable<dynamic> friends, {
+  Iterable<String> include = const [],
+}) {
+  final names = <String>[];
+  final seen = <String>{};
+  for (final value in [...friends, ...include]) {
+    final name = value.toString().trim();
+    if (name.isEmpty || !seen.add(name.toLowerCase())) continue;
+    names.add(name);
+  }
+  return names;
+}
+
+Future<Set<String>?> _showParticipantPicker(
+  BuildContext context, {
+  required List<String> friends,
+  required Set<String> selected,
+}) {
+  return showModalBottomSheet<Set<String>>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) {
+      final draftSelection = Set<String>.from(selected);
+      return StatefulBuilder(
+        builder: (context, setSheetState) {
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.68,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Select friends",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text("Choose everyone involved in this expense"),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: draftSelection.isEmpty
+                              ? null
+                              : () => setSheetState(draftSelection.clear),
+                          child: const Text("Clear"),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      itemCount: friends.length,
+                      itemBuilder: (context, index) {
+                        final friend = friends[index];
+                        final isSelected = draftSelection.contains(friend);
+                        return CheckboxListTile(
+                          value: isSelected,
+                          title: Text(friend),
+                          secondary: CircleAvatar(
+                            child: Text(friend[0].toUpperCase()),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          onChanged: (value) {
+                            setSheetState(() {
+                              if (value == true) {
+                                draftSelection.add(friend);
+                              } else {
+                                draftSelection.remove(friend);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(
+                        context,
+                        Set<String>.from(draftSelection),
+                      ),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
+                      child: Text(
+                        draftSelection.isEmpty
+                            ? "Use no friends"
+                            : "Use ${draftSelection.length} friend${draftSelection.length == 1 ? '' : 's'}",
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<double?> _showEqualSplitPrompt(BuildContext context) async {
+  final controller = TextEditingController();
+  String? errorText;
+  final result = await showDialog<double>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: const Text("Split equally"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: "Total friends owe",
+            prefixText: "RM ",
+            hintText: "0.00",
+            errorText: errorText,
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) {
+            final amount = double.tryParse(controller.text.trim());
+            if (amount == null || !amount.isFinite || amount <= 0) {
+              setDialogState(
+                () => errorText = "Enter an amount greater than zero",
+              );
+              return;
+            }
+            Navigator.pop(context, amount);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () {
+              final amount = double.tryParse(controller.text.trim());
+              if (amount == null || !amount.isFinite || amount <= 0) {
+                setDialogState(
+                  () => errorText = "Enter an amount greater than zero",
+                );
+                return;
+              }
+              Navigator.pop(context, amount);
+            },
+            child: const Text("Apply split"),
+          ),
+        ],
+      ),
+    ),
+  );
+  WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  return result;
+}
+
+class _AdditionalChargesSection extends StatelessWidget {
+  final bool expanded;
+  final TextEditingController taxController;
+  final TextEditingController serviceController;
+  final VoidCallback onToggle;
+  final ValueChanged<String> onChanged;
+
+  const _AdditionalChargesSection({
+    required this.expanded,
+    required this.taxController,
+    required this.serviceController,
+    required this.onToggle,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.percent_outlined, size: 20),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Additional charges",
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        "Tax and service (optional)",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(expanded ? Icons.expand_less : Icons.expand_more),
+              ],
+            ),
+          ),
+        ),
+        if (expanded) ...[
+          const SizedBox(height: 12),
+          Text(
+            "Applied proportionally to every person's share.",
+            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: taxController,
+                  decoration: const InputDecoration(
+                    labelText: "Tax",
+                    hintText: "0",
+                    suffixText: "%",
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: onChanged,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: serviceController,
+                  decoration: const InputDecoration(
+                    labelText: "Service",
+                    hintText: "0",
+                    suffixText: "%",
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: onChanged,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ParticipantAmountCard extends StatelessWidget {
+  final DebtEntry debt;
+  final TextEditingController amountController;
+  final TextEditingController descriptionController;
+  final bool noteExpanded;
+  final VoidCallback onRemove;
+  final VoidCallback onToggleNote;
+  final ValueChanged<String> onAmountChanged;
+  final ValueChanged<String> onDescriptionChanged;
+
+  const _ParticipantAmountCard({
+    required this.debt,
+    required this.amountController,
+    required this.descriptionController,
+    required this.noteExpanded,
+    required this.onRemove,
+    required this.onToggleNote,
+    required this.onAmountChanged,
+    required this.onDescriptionChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      key: ValueKey("expense-participant-${debt.friendName}"),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 17,
+                  backgroundColor: colorScheme.secondaryContainer,
+                  foregroundColor: colorScheme.onSecondaryContainer,
+                  child: Text(debt.friendName[0].toUpperCase()),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    debt.friendName,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close),
+                  tooltip: "Remove ${debt.friendName}",
+                  onPressed: onRemove,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: amountController,
+              decoration: const InputDecoration(
+                labelText: "Amount owed",
+                prefixText: "RM ",
+                hintText: "0.00",
+                isDense: true,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: onAmountChanged,
+            ),
+            if (noteExpanded) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: "Note (optional)",
+                  hintText: "Their share of dinner",
+                  prefixIcon: const Icon(Icons.notes_outlined),
+                  suffixIcon: IconButton(
+                    onPressed: onToggleNote,
+                    icon: const Icon(Icons.expand_less),
+                    tooltip: "Hide note",
+                  ),
+                  isDense: true,
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                onChanged: onDescriptionChanged,
+              ),
+            ] else
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: onToggleNote,
+                  icon: const Icon(Icons.add_comment_outlined, size: 17),
+                  label: Text(
+                    descriptionController.text.trim().isEmpty
+                        ? "Add note"
+                        : "Edit note",
+                  ),
+                ),
+              ),
+            if (debt.paid)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    "Paid",
+                    style: TextStyle(
+                      color: colorScheme.onTertiaryContainer,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AddExpenseDialogState extends State<AddExpenseDialog> {
   final _titleController = TextEditingController();
   final List<DebtEntry> _debts = [];
@@ -1353,16 +1758,10 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
+  bool _chargesExpanded = false;
+  final Set<String> _expandedNotes = {};
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.friends.isNotEmpty) {
-      _debts.add(DebtEntry(friendName: ''));
-      _amountControllers[0] = TextEditingController();
-      _descriptionControllers[0] = TextEditingController();
-    }
-  }
+  List<String> get _availableFriends => _expenseFriendNames(widget.friends);
 
   double _numberFrom(TextEditingController? controller) {
     return double.tryParse(controller?.text.trim() ?? '') ?? 0;
@@ -1395,46 +1794,122 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     super.dispose();
   }
 
-  void _addDebtEntry() {
+  void _syncParticipantSelection(Set<String> selected) {
+    final existingDebts = <String, DebtEntry>{};
+    final amountValues = <String, String>{};
+    final descriptionValues = <String, String>{};
+    for (var index = 0; index < _debts.length; index++) {
+      final friendName = _debts[index].friendName;
+      existingDebts[friendName] = _debts[index];
+      amountValues[friendName] =
+          _amountControllers[index]?.text ?? _debts[index].amount;
+      descriptionValues[friendName] =
+          _descriptionControllers[index]?.text ?? _debts[index].description;
+    }
+
+    final oldAmountControllers = _amountControllers.values.toList();
+    final oldDescriptionControllers = _descriptionControllers.values.toList();
+
     setState(() {
-      final newIndex = _debts.length;
-      _debts.add(DebtEntry(friendName: ''));
-      _amountControllers[newIndex] = TextEditingController();
-      _descriptionControllers[newIndex] = TextEditingController();
+      _debts.clear();
+      _amountControllers.clear();
+      _descriptionControllers.clear();
+      for (final friendName in _availableFriends) {
+        if (!selected.contains(friendName)) continue;
+        final debt =
+            existingDebts[friendName] ?? DebtEntry(friendName: friendName);
+        final index = _debts.length;
+        _debts.add(debt);
+        _amountControllers[index] = TextEditingController(
+          text: amountValues[friendName] ?? debt.amount,
+        );
+        _descriptionControllers[index] = TextEditingController(
+          text: descriptionValues[friendName] ?? debt.description,
+        );
+      }
+      _expandedNotes.removeWhere((name) => !selected.contains(name));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in oldAmountControllers) {
+        controller.dispose();
+      }
+      for (final controller in oldDescriptionControllers) {
+        controller.dispose();
+      }
     });
   }
 
-  void _removeDebtEntry(int index) {
-    setState(() {
-      _amountControllers[index]?.dispose();
-      _descriptionControllers[index]?.dispose();
-      _amountControllers.remove(index);
-      _descriptionControllers.remove(index);
-      _debts.removeAt(index);
+  bool _hasDraftContent(String friendName) {
+    final index = _debts.indexWhere((debt) => debt.friendName == friendName);
+    if (index < 0) return false;
+    return (_amountControllers[index]?.text.trim().isNotEmpty ?? false) ||
+        (_descriptionControllers[index]?.text.trim().isNotEmpty ?? false);
+  }
 
-      // Reindex controllers
-      final newAmountControllers = <int, TextEditingController>{};
-      final newDescriptionControllers = <int, TextEditingController>{};
-      for (int i = 0; i < _debts.length; i++) {
-        if (_amountControllers.containsKey(i + 1)) {
-          newAmountControllers[i] = _amountControllers[i + 1]!;
-        } else {
-          newAmountControllers[i] = TextEditingController(
-            text: _debts[i].amount,
-          );
-        }
-        if (_descriptionControllers.containsKey(i + 1)) {
-          newDescriptionControllers[i] = _descriptionControllers[i + 1]!;
-        } else {
-          newDescriptionControllers[i] = TextEditingController(
-            text: _debts[i].description,
-          );
-        }
+  Future<bool> _confirmParticipantRemoval(Set<String> removed) async {
+    final hasDraftContent = removed.any(_hasDraftContent);
+    if (!hasDraftContent) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Remove selected friend?"),
+            content: const Text(
+              "The amount or note entered for this friend will be discarded.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Keep friend"),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Remove"),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _selectParticipants() async {
+    final current = _debts.map((debt) => debt.friendName).toSet();
+    final selected = await _showParticipantPicker(
+      context,
+      friends: _availableFriends,
+      selected: current,
+    );
+    if (selected == null || !mounted) return;
+    final removed = current.difference(selected);
+    if (removed.isNotEmpty && !await _confirmParticipantRemoval(removed)) {
+      return;
+    }
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _removeParticipant(int index) async {
+    final friendName = _debts[index].friendName;
+    if (!await _confirmParticipantRemoval({friendName}) || !mounted) return;
+    final selected = _debts.map((debt) => debt.friendName).toSet()
+      ..remove(friendName);
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _splitEqually() async {
+    if (_debts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Select friends before splitting.")),
+      );
+      return;
+    }
+    final total = await _showEqualSplitPrompt(context);
+    if (total == null || !mounted) return;
+    final shares = splitCurrencyTotal(total, _debts.length);
+    setState(() {
+      for (var index = 0; index < _debts.length; index++) {
+        final value = shares[index].toStringAsFixed(2);
+        _debts[index].amount = value;
+        _amountControllers[index]?.text = value;
       }
-      _amountControllers.clear();
-      _descriptionControllers.clear();
-      _amountControllers.addAll(newAmountControllers);
-      _descriptionControllers.addAll(newDescriptionControllers);
     });
   }
 
@@ -1451,7 +1926,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     if (_debts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please add at least one friend who owes you."),
+          content: Text("Select at least one friend who owes you."),
         ),
       );
       return;
@@ -1488,7 +1963,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
       try {
         final baseAmount = double.parse(amountText);
-        if (baseAmount <= 0) {
+        if (!baseAmount.isFinite || baseAmount <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Amount must be greater than 0.")),
           );
@@ -1593,7 +2068,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (widget.friends.isEmpty) {
+    if (_availableFriends.isEmpty) {
       return AlertDialog(
         icon: Icon(Icons.group_add_outlined, color: colorScheme.primary),
         title: const Text("Add a friend first"),
@@ -1602,9 +2077,24 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
           textAlign: TextAlign.center,
         ),
         actions: [
-          FilledButton(
+          TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Got it"),
+            child: const Text("Cancel"),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await showDialog<void>(
+                context: context,
+                builder: (context) => ManageFriendsDialog(
+                  groupId: widget.groupId,
+                  currentFriends: widget.friends,
+                ),
+              );
+              if (mounted) navigator.pop();
+            },
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text("Manage friends"),
           ),
         ],
       );
@@ -1676,58 +2166,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                 textCapitalization: TextCapitalization.sentences,
                 textInputAction: TextInputAction.next,
               ),
-              const SizedBox(height: 24),
-              const Text(
-                "Additional charges",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Applied proportionally to every person's share.",
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _taxPercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Tax",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _servicePercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Service",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   const Expanded(
@@ -1743,19 +2182,36 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                         ),
                         SizedBox(height: 3),
                         Text(
-                          "Add each person's individual share",
+                          "Select friends once, then enter custom amounts",
                           style: TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
                   FilledButton.tonalIcon(
-                    onPressed: _addDebtEntry,
-                    icon: const Icon(Icons.person_add_alt_1, size: 18),
-                    label: const Text("Add"),
+                    onPressed: _selectParticipants,
+                    icon: const Icon(Icons.group_add_outlined, size: 18),
+                    label: Text(_debts.isEmpty ? "Select" : "Change"),
                   ),
                 ],
               ),
+              if (_debts.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      "${_debts.length} selected",
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _splitEqually,
+                      icon: const Icon(Icons.balance_outlined, size: 18),
+                      label: const Text("Split equally"),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               if (_debts.isEmpty)
                 Container(
@@ -1772,149 +2228,43 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                     children: [
                       Icon(Icons.group_outlined),
                       SizedBox(height: 8),
-                      Text("No shares added yet"),
+                      Text("Select the friends involved in this expense"),
                     ],
                   ),
                 )
               else
                 ...List.generate(_debts.length, (index) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 0,
-                    color: colorScheme.surface,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 30,
-                                height: 30,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: colorScheme.secondaryContainer,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Text(
-                                  "${index + 1}",
-                                  style: TextStyle(
-                                    color: colorScheme.onSecondaryContainer,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  "Share ${index + 1}",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                visualDensity: VisualDensity.compact,
-                                icon: Icon(
-                                  Icons.delete_outline,
-                                  color: colorScheme.error,
-                                ),
-                                onPressed: () => _removeDebtEntry(index),
-                                tooltip: "Remove share",
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey(
-                                    "friend-$index-${_debts[index].friendName}",
-                                  ),
-                                  initialValue: _debts[index].friendName.isEmpty
-                                      ? null
-                                      : _debts[index].friendName,
-                                  decoration: const InputDecoration(
-                                    labelText: "Friend",
-                                    prefixIcon: Icon(Icons.person_outline),
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  items: widget.friends
-                                      .map<DropdownMenuItem<String>>((
-                                        dynamic value,
-                                      ) {
-                                        return DropdownMenuItem<String>(
-                                          value: value.toString(),
-                                          child: Text(value.toString()),
-                                        );
-                                      })
-                                      .toList(),
-                                  onChanged: (String? newValue) {
-                                    setState(() {
-                                      _debts[index].friendName = newValue ?? '';
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _amountControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].amount,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Base amount",
-                              prefixText: "RM ",
-                              hintText: "0.00",
-                              helperText: "Before tax and service",
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            onChanged: (value) {
-                              _debts[index].amount = value;
-                              setState(() {});
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _descriptionControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].description,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Note (optional)",
-                              hintText: "Their share of dinner",
-                              prefixIcon: Icon(Icons.notes_outlined),
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            textCapitalization: TextCapitalization.sentences,
-                            onChanged: (value) {
-                              _debts[index].description = value;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+                  final debt = _debts[index];
+                  return _ParticipantAmountCard(
+                    debt: debt,
+                    amountController: _amountControllers[index]!,
+                    descriptionController: _descriptionControllers[index]!,
+                    noteExpanded: _expandedNotes.contains(debt.friendName),
+                    onRemove: () => _removeParticipant(index),
+                    onToggleNote: () => setState(() {
+                      if (!_expandedNotes.add(debt.friendName)) {
+                        _expandedNotes.remove(debt.friendName);
+                      }
+                    }),
+                    onAmountChanged: (value) {
+                      debt.amount = value;
+                      setState(() {});
+                    },
+                    onDescriptionChanged: (value) {
+                      debt.description = value;
+                    },
                   );
                 }),
-              const SizedBox(height: 4),
+              const SizedBox(height: 12),
+              _AdditionalChargesSection(
+                expanded: _chargesExpanded,
+                taxController: _taxPercentController,
+                serviceController: _servicePercentController,
+                onToggle: () =>
+                    setState(() => _chargesExpanded = !_chargesExpanded),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -2036,6 +2386,15 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   final _taxPercentController = TextEditingController();
   final _servicePercentController = TextEditingController();
   bool _isLoading = false;
+  bool _chargesExpanded = false;
+  final Set<String> _expandedNotes = {};
+
+  List<String> get _availableFriends => _expenseFriendNames(
+    widget.friends,
+    include: widget.initialDebts.map(
+      (debt) => debt['friendName']?.toString() ?? '',
+    ),
+  );
 
   double _numberFrom(TextEditingController? controller) {
     return double.tryParse(controller?.text.trim() ?? '') ?? 0;
@@ -2062,10 +2421,13 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     _servicePercentController.text = widget.initialServicePercent == 0.0
         ? ''
         : widget.initialServicePercent.toString();
+    _chargesExpanded =
+        widget.initialTaxPercent != 0 || widget.initialServicePercent != 0;
 
     // Convert initial debts to DebtEntry objects
     for (var debt in widget.initialDebts) {
       final friendName = debt['friendName'] as String? ?? '';
+      if (friendName.trim().isEmpty) continue;
       final amountWithCharges = (debt['amount'] as num?)?.toDouble() ?? 0.0;
       final baseAmount =
           (debt['baseAmount'] as num?)?.toDouble() ?? amountWithCharges;
@@ -2103,46 +2465,122 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     super.dispose();
   }
 
-  void _addDebtEntry() {
+  void _syncParticipantSelection(Set<String> selected) {
+    final existingDebts = <String, DebtEntry>{};
+    final amountValues = <String, String>{};
+    final descriptionValues = <String, String>{};
+    for (var index = 0; index < _debts.length; index++) {
+      final friendName = _debts[index].friendName;
+      existingDebts[friendName] = _debts[index];
+      amountValues[friendName] =
+          _amountControllers[index]?.text ?? _debts[index].amount;
+      descriptionValues[friendName] =
+          _descriptionControllers[index]?.text ?? _debts[index].description;
+    }
+
+    final oldAmountControllers = _amountControllers.values.toList();
+    final oldDescriptionControllers = _descriptionControllers.values.toList();
+
     setState(() {
-      final newIndex = _debts.length;
-      _debts.add(DebtEntry(friendName: ''));
-      _amountControllers[newIndex] = TextEditingController();
-      _descriptionControllers[newIndex] = TextEditingController();
+      _debts.clear();
+      _amountControllers.clear();
+      _descriptionControllers.clear();
+      for (final friendName in _availableFriends) {
+        if (!selected.contains(friendName)) continue;
+        final debt =
+            existingDebts[friendName] ?? DebtEntry(friendName: friendName);
+        final index = _debts.length;
+        _debts.add(debt);
+        _amountControllers[index] = TextEditingController(
+          text: amountValues[friendName] ?? debt.amount,
+        );
+        _descriptionControllers[index] = TextEditingController(
+          text: descriptionValues[friendName] ?? debt.description,
+        );
+      }
+      _expandedNotes.removeWhere((name) => !selected.contains(name));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in oldAmountControllers) {
+        controller.dispose();
+      }
+      for (final controller in oldDescriptionControllers) {
+        controller.dispose();
+      }
     });
   }
 
-  void _removeDebtEntry(int index) {
-    setState(() {
-      _amountControllers[index]?.dispose();
-      _descriptionControllers[index]?.dispose();
-      _amountControllers.remove(index);
-      _descriptionControllers.remove(index);
-      _debts.removeAt(index);
+  bool _hasDraftContent(String friendName) {
+    final index = _debts.indexWhere((debt) => debt.friendName == friendName);
+    if (index < 0) return false;
+    return (_amountControllers[index]?.text.trim().isNotEmpty ?? false) ||
+        (_descriptionControllers[index]?.text.trim().isNotEmpty ?? false);
+  }
 
-      // Reindex controllers
-      final newAmountControllers = <int, TextEditingController>{};
-      final newDescriptionControllers = <int, TextEditingController>{};
-      for (int i = 0; i < _debts.length; i++) {
-        if (_amountControllers.containsKey(i + 1)) {
-          newAmountControllers[i] = _amountControllers[i + 1]!;
-        } else {
-          newAmountControllers[i] = TextEditingController(
-            text: _debts[i].amount,
-          );
-        }
-        if (_descriptionControllers.containsKey(i + 1)) {
-          newDescriptionControllers[i] = _descriptionControllers[i + 1]!;
-        } else {
-          newDescriptionControllers[i] = TextEditingController(
-            text: _debts[i].description,
-          );
-        }
+  Future<bool> _confirmParticipantRemoval(Set<String> removed) async {
+    final hasDraftContent = removed.any(_hasDraftContent);
+    if (!hasDraftContent) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Remove selected friend?"),
+            content: const Text(
+              "Their amount, note, and payment status will be removed from this expense.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Keep friend"),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Remove"),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _selectParticipants() async {
+    final current = _debts.map((debt) => debt.friendName).toSet();
+    final selected = await _showParticipantPicker(
+      context,
+      friends: _availableFriends,
+      selected: current,
+    );
+    if (selected == null || !mounted) return;
+    final removed = current.difference(selected);
+    if (removed.isNotEmpty && !await _confirmParticipantRemoval(removed)) {
+      return;
+    }
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _removeParticipant(int index) async {
+    final friendName = _debts[index].friendName;
+    if (!await _confirmParticipantRemoval({friendName}) || !mounted) return;
+    final selected = _debts.map((debt) => debt.friendName).toSet()
+      ..remove(friendName);
+    _syncParticipantSelection(selected);
+  }
+
+  Future<void> _splitEqually() async {
+    if (_debts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Select friends before splitting.")),
+      );
+      return;
+    }
+    final total = await _showEqualSplitPrompt(context);
+    if (total == null || !mounted) return;
+    final shares = splitCurrencyTotal(total, _debts.length);
+    setState(() {
+      for (var index = 0; index < _debts.length; index++) {
+        final value = shares[index].toStringAsFixed(2);
+        _debts[index].amount = value;
+        _amountControllers[index]?.text = value;
       }
-      _amountControllers.clear();
-      _descriptionControllers.clear();
-      _amountControllers.addAll(newAmountControllers);
-      _descriptionControllers.addAll(newDescriptionControllers);
     });
   }
 
@@ -2159,7 +2597,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
     if (_debts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please add at least one friend who owes you."),
+          content: Text("Select at least one friend who owes you."),
         ),
       );
       return;
@@ -2196,7 +2634,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
 
       try {
         final baseAmount = double.parse(amountText);
-        if (baseAmount <= 0) {
+        if (!baseAmount.isFinite || baseAmount <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Amount must be greater than 0.")),
           );
@@ -2312,7 +2750,7 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (widget.friends.isEmpty) {
+    if (_availableFriends.isEmpty) {
       return AlertDialog(
         title: const Text("Edit Expense"),
         content: const Text(
@@ -2321,7 +2759,22 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
+            child: const Text("Cancel"),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await showDialog<void>(
+                context: context,
+                builder: (context) => ManageFriendsDialog(
+                  groupId: widget.groupId,
+                  currentFriends: widget.friends,
+                ),
+              );
+              if (mounted) navigator.pop();
+            },
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text("Manage friends"),
           ),
         ],
       );
@@ -2392,49 +2845,6 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 20),
-              const Text(
-                "Additional charges",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _taxPercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Tax",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _servicePercentController,
-                      decoration: const InputDecoration(
-                        labelText: "Service",
-                        hintText: "0",
-                        suffixText: "%",
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
               Row(
                 children: [
                   const Expanded(
@@ -2450,171 +2860,89 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                         ),
                         SizedBox(height: 3),
                         Text(
-                          "Paid shares keep their current status",
+                          "Select friends once; paid shares keep their status",
                           style: TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
                   FilledButton.tonalIcon(
-                    onPressed: _addDebtEntry,
-                    icon: const Icon(Icons.person_add_alt_1, size: 18),
-                    label: const Text("Add"),
+                    onPressed: _selectParticipants,
+                    icon: const Icon(Icons.group_add_outlined, size: 18),
+                    label: Text(_debts.isEmpty ? "Select" : "Change"),
                   ),
                 ],
               ),
+              if (_debts.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      "${_debts.length} selected",
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _splitEqually,
+                      icon: const Icon(Icons.balance_outlined, size: 18),
+                      label: const Text("Split equally"),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               if (_debts.isEmpty)
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 28,
+                  ),
                   decoration: BoxDecoration(
                     color: AppPalette.surfaceElevated,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Center(
-                    child: Text(
-                      "Tap 'Add Friend' to add someone who owes you",
-                      style: TextStyle(color: AppPalette.secondaryLabel),
-                    ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.group_outlined),
+                      SizedBox(height: 8),
+                      Text("Select the friends involved in this expense"),
+                    ],
                   ),
                 )
               else
                 ...List.generate(_debts.length, (index) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey(
-                                    "edit-friend-$index-${_debts[index].friendName}",
-                                  ),
-                                  initialValue: _debts[index].friendName.isEmpty
-                                      ? null
-                                      : _debts[index].friendName,
-                                  decoration: const InputDecoration(
-                                    labelText: "Friend",
-                                    prefixIcon: Icon(Icons.person_outline),
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  items: widget.friends
-                                      .map<DropdownMenuItem<String>>((
-                                        dynamic value,
-                                      ) {
-                                        return DropdownMenuItem<String>(
-                                          value: value.toString(),
-                                          child: Text(value.toString()),
-                                        );
-                                      })
-                                      .toList(),
-                                  onChanged: (String? newValue) {
-                                    setState(() {
-                                      _debts[index].friendName = newValue ?? '';
-                                    });
-                                  },
-                                ),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  Icons.delete_outline,
-                                  color: colorScheme.error,
-                                ),
-                                onPressed: () => _removeDebtEntry(index),
-                                tooltip: "Remove",
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _amountControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].amount,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Base amount (before tax/service)",
-                              prefixText: "RM ",
-                              hintText: "0.00",
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            onChanged: (value) {
-                              _debts[index].amount = value;
-                              setState(() {});
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _descriptionControllers[index] ??=
-                                TextEditingController(
-                                  text: _debts[index].description,
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: "Note (optional)",
-                              hintText: "Their share of dinner",
-                              prefixIcon: Icon(Icons.notes_outlined),
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            textCapitalization: TextCapitalization.sentences,
-                            onChanged: (value) {
-                              _debts[index].description = value;
-                            },
-                          ),
-                          if (_debts[index].paid)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.tertiaryContainer,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_outline,
-                                      color: colorScheme.onTertiaryContainer,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      "This debt is marked as paid",
-                                      style: TextStyle(
-                                        color: colorScheme.onTertiaryContainer,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+                  final debt = _debts[index];
+                  return _ParticipantAmountCard(
+                    debt: debt,
+                    amountController: _amountControllers[index]!,
+                    descriptionController: _descriptionControllers[index]!,
+                    noteExpanded: _expandedNotes.contains(debt.friendName),
+                    onRemove: () => _removeParticipant(index),
+                    onToggleNote: () => setState(() {
+                      if (!_expandedNotes.add(debt.friendName)) {
+                        _expandedNotes.remove(debt.friendName);
+                      }
+                    }),
+                    onAmountChanged: (value) {
+                      debt.amount = value;
+                      setState(() {});
+                    },
+                    onDescriptionChanged: (value) {
+                      debt.description = value;
+                    },
                   );
                 }),
+              const SizedBox(height: 12),
+              _AdditionalChargesSection(
+                expanded: _chargesExpanded,
+                taxController: _taxPercentController,
+                serviceController: _servicePercentController,
+                onToggle: () =>
+                    setState(() => _chargesExpanded = !_chargesExpanded),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

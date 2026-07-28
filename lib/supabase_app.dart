@@ -9,8 +9,57 @@ import 'supabase_home_screen.dart';
 
 Future<void> runSupabaseJpay() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await BackendConfig.initializeSupabase();
-  runApp(const SupabaseJpayApp());
+  try {
+    await BackendConfig.initializeSupabase();
+    runApp(const SupabaseJpayApp());
+  } catch (error) {
+    runApp(_BackendStartupErrorApp(message: error.toString()));
+  }
+}
+
+class _BackendStartupErrorApp extends StatelessWidget {
+  final String message;
+
+  const _BackendStartupErrorApp({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Jpay',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.dark,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_outlined,
+                    size: 54,
+                    color: AppPalette.red,
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Jpay could not start',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    message.replaceFirst('Bad state: ', ''),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppPalette.secondaryLabel),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SupabaseJpayApp extends StatelessWidget {

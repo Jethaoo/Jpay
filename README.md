@@ -15,6 +15,13 @@ expenses, and payment history.
 - Per-group friend management
 - Custom participant amounts with an optional explicit equal split
 - Add and edit expenses with notes, tax, and service charges
+- Private receipt, invoice, product-photo, and screenshot proof (up to five)
+- On-device Latin and Chinese receipt OCR with reviewed merchant, total, date,
+  item, and searchable raw-text extraction
+- Optional current, searched, or map-pinned transaction locations
+- Preset and reusable custom expense categories
+- Per-group merchant, date, category, location, proof, and receipt-text search
+- OpenStreetMap-backed transaction map and place picker
 - Track individual shares and paid or unpaid status
 - Mark one share or all shares for a friend as paid
 - Familiar month dashboard with compact group and outstanding summaries
@@ -75,6 +82,22 @@ flutter run `
   --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 ```
 
+Map service endpoints are configurable without a new build:
+
+```powershell
+flutter run `
+  --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME `
+  --dart-define=OSM_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png `
+  --dart-define=NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org `
+  --dart-define="MAP_USER_AGENT=Jpay/1.0 (contact@example.com)"
+```
+
+Public OpenStreetMap tile and Nominatim services are best-effort community
+infrastructure. Keep attribution visible, do not prefetch or offline-download
+tiles, use explicit place searches, and configure hosted or self-managed
+OSM-compatible endpoints before usage exceeds their public policies.
+
 To target a specific device:
 
 ```powershell
@@ -116,6 +139,10 @@ upload keystore in `android/app/build.gradle.kts`.
 - Expense creation, editing, settlement, and deletion use transactional
   PostgreSQL functions.
 - Profile images use a private bucket scoped to the authenticated user UUID.
+- Expense proof images use a separate private bucket scoped to the owner UUID;
+  only short-lived signed URLs are shown in the app.
+- Receipt OCR runs on the Android device. Only user-reviewed OCR text and
+  structured fields are stored for later search.
 
 Apply the versioned files under `supabase/migrations/` whenever the schema or
 access model changes.

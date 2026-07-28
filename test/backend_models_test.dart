@@ -39,4 +39,52 @@ void main() {
     expect(group.totalOwed, 42.35);
     expect(group.createdAt.toUtc(), DateTime.utc(2026, 7, 28, 8));
   });
+
+  test('enriched expense rows map proof and location metadata', () {
+    final expense = ExpenseRecord.fromSupabase({
+      'id': 'expense-id',
+      'group_id': 'group-id',
+      'title': 'Dinner',
+      'merchant': 'Kopitiam',
+      'notes': 'Team meal',
+      'category_id': 'category-id',
+      'category_name': 'Food & Dining',
+      'receipt_total': 42.5,
+      'latitude': 3.139,
+      'longitude': 101.6869,
+      'location_label': 'Central Market',
+      'location_address': 'Kuala Lumpur',
+      'attachment_count': 2,
+      'expense_date': '2026-07-28T08:00:00.000Z',
+    });
+
+    expect(expense.merchant, 'Kopitiam');
+    expect(expense.categoryName, 'Food & Dining');
+    expect(expense.receiptTotal, 42.5);
+    expect(expense.location?.label, 'Central Market');
+    expect(expense.attachmentCount, 2);
+  });
+
+  test('expense query matches metadata and proof state', () {
+    final expense = ExpenseRecord.fromSupabase({
+      'id': 'expense-id',
+      'group_id': 'group-id',
+      'title': 'Groceries',
+      'merchant': 'Village Grocer',
+      'notes': 'Weekly shop',
+      'category_id': 'groceries',
+      'category_name': 'Groceries',
+      'attachment_count': 1,
+      'expense_date': '2026-07-28T08:00:00.000Z',
+    });
+
+    expect(
+      const ExpenseQuery(text: 'village', hasProof: true).matches(expense),
+      isTrue,
+    );
+    expect(
+      const ExpenseQuery(categoryId: 'transport').matches(expense),
+      isFalse,
+    );
+  });
 }

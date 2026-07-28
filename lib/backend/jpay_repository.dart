@@ -9,6 +9,12 @@ abstract interface class JpayRepository {
 
   Stream<List<ExpenseRecord>> watchExpenses(String groupId);
 
+  Stream<List<ExpenseCategoryRecord>> watchExpenseCategories();
+
+  Stream<List<ExpenseAttachmentRecord>> watchExpenseAttachments(
+    String expenseId,
+  );
+
   Stream<List<ExpenseShareRecord>> watchExpenseShares(String expenseId);
 
   Stream<List<ExpenseShareRecord>> watchAllExpenseShares();
@@ -26,6 +32,25 @@ abstract interface class JpayRepository {
   Future<String> createExpense(String groupId, ExpenseDraft expense);
 
   Future<void> updateExpense(String expenseId, ExpenseDraft expense);
+
+  Future<ExpenseCategoryRecord> createExpenseCategory(String name);
+
+  Future<List<ExpenseRecord>> searchExpenses(
+    String groupId,
+    ExpenseQuery query,
+  );
+
+  Future<String> uploadExpenseProof({
+    required String expenseId,
+    required String attachmentId,
+    required String extension,
+    required String mimeType,
+    required Uint8List bytes,
+  });
+
+  Future<String> createExpenseProofUrl(String path);
+
+  Future<void> deleteExpenseProofs(List<String> paths);
 
   Future<bool> markExpenseSharePaid(String shareId);
 

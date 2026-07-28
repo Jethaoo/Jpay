@@ -38,6 +38,9 @@ The initial migration creates:
 - `expenses`, replacing group expense subcollections
 - `expense_shares`, replacing embedded `debts` arrays
 - a private `profile-pictures` Storage bucket
+- reusable preset and user-owned expense categories
+- merchant, notes, receipt-total, proof-count, and optional location metadata
+- private expense proof images with reviewed, searchable on-device OCR results
 
 Every imported record can retain its original Firestore ID in `firebase_id`.
 Firebase user IDs are stored in `profiles.firebase_uid` because Supabase Auth

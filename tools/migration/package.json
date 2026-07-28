@@ -1,0 +1,16 @@
+{
+  "name": "jpay-firebase-supabase-migration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "audit": "node audit_firebase.mjs",
+    "export": "node export_firebase.mjs",
+    "import": "node import_supabase.mjs",
+    "set-direct-password": "node set_direct_password.mjs",
+    "verify-user-access": "node verify_user_access.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.110.9",
+    "firebase-admin": "14.2.0"
+  }
+}

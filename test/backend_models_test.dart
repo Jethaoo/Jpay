@@ -87,4 +87,70 @@ void main() {
       isFalse,
     );
   });
+
+  test('categories put the three most used first and alphabetize the rest', () {
+    const categories = [
+      ExpenseCategoryRecord(
+        id: 'other',
+        name: 'Other',
+        iconName: 'category',
+        isPreset: true,
+        isActive: true,
+      ),
+      ExpenseCategoryRecord(
+        id: 'travel',
+        name: 'Travel',
+        iconName: 'flight',
+        isPreset: true,
+        isActive: true,
+      ),
+      ExpenseCategoryRecord(
+        id: 'food',
+        name: 'Food & Dining',
+        iconName: 'restaurant',
+        isPreset: true,
+        isActive: true,
+      ),
+      ExpenseCategoryRecord(
+        id: 'bills',
+        name: 'Bills',
+        iconName: 'receipt',
+        isPreset: true,
+        isActive: true,
+      ),
+      ExpenseCategoryRecord(
+        id: 'groceries',
+        name: 'Groceries',
+        iconName: 'shopping_basket',
+        isPreset: true,
+        isActive: true,
+      ),
+      ExpenseCategoryRecord(
+        id: 'entertainment',
+        name: 'Entertainment',
+        iconName: 'movie',
+        isPreset: true,
+        isActive: true,
+      ),
+    ];
+
+    final ordered = orderExpenseCategoriesByUsage(categories, const [
+      'food',
+      'travel',
+      'food',
+      'groceries',
+      'bills',
+      'food',
+      'travel',
+    ]);
+
+    expect(ordered.map((category) => category.name), [
+      'Food & Dining',
+      'Travel',
+      'Bills',
+      'Entertainment',
+      'Groceries',
+      'Other',
+    ]);
+  });
 }

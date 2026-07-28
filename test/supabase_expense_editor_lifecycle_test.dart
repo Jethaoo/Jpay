@@ -86,9 +86,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.text('1 friend'));
+      await tester.pumpAndSettle();
+      expect(find.text('Manage friends'), findsOneWidget);
+      expect(find.text('Alex'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Done'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byType(FloatingActionButton));
       await tester.pumpAndSettle();
       await tester.enterText(_textField('What was it for?'), 'Dinner');
+      expect(_textField('Merchant (optional)'), findsNothing);
+      await tester.tap(find.text('Merchant & notes'));
+      await tester.pumpAndSettle();
       await tester.enterText(_textField('Merchant (optional)'), 'Night Market');
       await tester.enterText(
         _textField('Expense notes (optional)'),
@@ -106,6 +116,17 @@ void main() {
 
       await tester.tap(find.byTooltip('Create category'));
       await tester.pumpAndSettle();
+      await tester.enterText(_textField('Category name'), ' food & dining ');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pump();
+      expect(
+        find.text(
+          'The category "Food & Dining" already exists. Choose it from '
+          'the list.',
+        ),
+        findsOneWidget,
+      );
+
       await tester.enterText(_textField('Category name'), 'Work');
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
@@ -118,6 +139,57 @@ void main() {
       expect(find.byType(DatePickerDialog), findsOneWidget);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
+
+      final selectFriends = find.widgetWithText(FilledButton, 'Select');
+      await tester.ensureVisible(selectFriends);
+      await tester.tap(selectFriends);
+      await tester.pumpAndSettle();
+      expect(find.text('Select friends'), findsOneWidget);
+      expect(find.widgetWithText(CheckboxListTile, 'Alex'), findsOneWidget);
+      expect(find.text('Select all'), findsOneWidget);
+      await tester.tap(find.text('Select all'));
+      await tester.pump();
+      final alexTile = tester.widget<CheckboxListTile>(
+        find.widgetWithText(CheckboxListTile, 'Alex'),
+      );
+      expect(alexTile.value, isTrue);
+      expect(find.text('Clear all'), findsOneWidget);
+      expect(find.text('Use 1 friend'), findsOneWidget);
+      await tester.tap(find.text('Use 1 friend'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Showing the selected participant should not overflow.',
+      );
+
+      final splitEqually = find.text('Split equally');
+      await tester.ensureVisible(splitEqually);
+      await tester.tap(splitEqually);
+      await tester.pumpAndSettle();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Opening the split dialog should not overflow.',
+      );
+      await tester.enterText(_textField('Total to split (RM)'), '12');
+      await tester.pump();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Entering a split total should not overflow.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Apply split'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Applying the split should close without a lifecycle error.',
+      );
+      final amountField = tester.widget<TextField>(
+        _textField('Amount owed (RM)'),
+      );
+      expect(amountField.controller?.text, '12.00');
 
       expect(tester.takeException(), isNull);
       expect(find.text('Add expense'), findsNWidgets(2));

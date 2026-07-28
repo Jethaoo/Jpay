@@ -4,28 +4,35 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_theme.dart';
 import 'backend/backend_models.dart';
+import 'backend/jpay_repository.dart';
 import 'backend/supabase_jpay_repository.dart';
 import 'network_status.dart';
 import 'supabase_group_details_screen.dart';
 import 'supabase_profile_screen.dart';
+import 'widgets/group_name_dialog.dart';
 
 class SupabaseHomeScreen extends StatefulWidget {
-  const SupabaseHomeScreen({super.key});
+  final JpayRepository? repository;
+  final String? userEmail;
+
+  const SupabaseHomeScreen({super.key, this.repository, this.userEmail});
 
   @override
   State<SupabaseHomeScreen> createState() => _SupabaseHomeScreenState();
 }
 
 class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
-  late final SupabaseJpayRepository _repository;
+  late final JpayRepository _repository;
   final _searchController = TextEditingController();
+  final Set<String> _hiddenGroupIds = {};
   String _query = '';
   String? _profilePhotoUrl;
 
   @override
   void initState() {
     super.initState();
-    _repository = SupabaseJpayRepository(Supabase.instance.client);
+    _repository =
+        widget.repository ?? SupabaseJpayRepository(Supabase.instance.client);
     _loadProfilePicture();
   }
 
@@ -105,9 +112,15 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
       ),
     );
     if (confirmed != true) return;
+    setState(() => _hiddenGroupIds.add(group.id));
     try {
       await _repository.deleteGroup(group.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${group.name} deleted')));
     } catch (error) {
+      if (mounted) setState(() => _hiddenGroupIds.remove(group.id));
       _showError(error, 'delete this group');
     }
   }
@@ -115,54 +128,15 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
   Future<String?> _showNameDialog({
     required String title,
     String initialValue = '',
-  }) async {
-    final controller = TextEditingController(text: initialValue);
-    String? errorText;
-    final result = await showDialog<String>(
+  }) {
+    return showDialog<String>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 60,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              labelText: 'Group name',
-              errorText: errorText,
-            ),
-            onSubmitted: (_) {
-              final value = controller.text.trim();
-              if (value.isEmpty) {
-                setDialogState(() => errorText = 'Enter a group name.');
-              } else {
-                Navigator.pop(dialogContext, value);
-              }
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = controller.text.trim();
-                if (value.isEmpty) {
-                  setDialogState(() => errorText = 'Enter a group name.');
-                  return;
-                }
-                Navigator.pop(dialogContext, value);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
+      builder: (_) => GroupNameDialog(
+        title: title,
+        initialValue: initialValue,
+        actionLabel: initialValue.isEmpty ? 'Create' : 'Save',
       ),
     );
-    controller.dispose();
-    return result;
   }
 
   void _openGroup(GroupRecord group) {
@@ -201,7 +175,10 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final email = Supabase.instance.client.auth.currentUser?.email ?? '';
+    final email =
+        widget.userEmail ??
+        Supabase.instance.client.auth.currentUser?.email ??
+        '';
     final now = DateTime.now();
     final monthYear = '${_monthName(now.month)} ${now.year}';
     final profilePhotoUrl = _profilePhotoUrl;
@@ -270,7 +247,13 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final groups = snapshot.data!;
+          final serverGroups = snapshot.data!;
+          _hiddenGroupIds.removeWhere(
+            (id) => !serverGroups.any((group) => group.id == id),
+          );
+          final groups = serverGroups
+              .where((group) => !_hiddenGroupIds.contains(group.id))
+              .toList();
           final query = _query.toLowerCase();
           final visible = groups
               .where((group) => group.name.toLowerCase().contains(query))
@@ -495,7 +478,7 @@ class _SummaryCard extends StatelessWidget {
 
 class _GroupCard extends StatelessWidget {
   final GroupRecord group;
-  final SupabaseJpayRepository repository;
+  final JpayRepository repository;
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDelete;
@@ -646,7 +629,7 @@ class _GroupCard extends StatelessWidget {
 }
 
 class _ManageGroupsScreen extends StatelessWidget {
-  final SupabaseJpayRepository repository;
+  final JpayRepository repository;
   final ValueChanged<GroupRecord> onOpen;
   final ValueChanged<GroupRecord> onRename;
   final ValueChanged<GroupRecord> onDelete;

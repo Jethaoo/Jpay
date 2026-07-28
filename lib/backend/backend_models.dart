@@ -133,6 +133,51 @@ class ExpenseCategoryRecord {
   }
 }
 
+List<ExpenseCategoryRecord> orderExpenseCategoriesByUsage(
+  Iterable<ExpenseCategoryRecord> categories,
+  Iterable<String?> usedCategoryIds, {
+  int frequentLimit = 3,
+}) {
+  final categoriesById = <String, ExpenseCategoryRecord>{
+    for (final category in categories) category.id: category,
+  };
+  final usageCounts = <String, int>{};
+  for (final categoryId in usedCategoryIds) {
+    if (categoryId == null || !categoriesById.containsKey(categoryId)) {
+      continue;
+    }
+    usageCounts.update(categoryId, (count) => count + 1, ifAbsent: () => 1);
+  }
+
+  int compareAlphabetically(ExpenseCategoryRecord a, ExpenseCategoryRecord b) =>
+      a.name.toLowerCase().compareTo(b.name.toLowerCase());
+
+  final usedCategories =
+      categoriesById.values
+          .where((category) => (usageCounts[category.id] ?? 0) > 0)
+          .toList()
+        ..sort((a, b) {
+          final countComparison = (usageCounts[b.id] ?? 0).compareTo(
+            usageCounts[a.id] ?? 0,
+          );
+          return countComparison != 0
+              ? countComparison
+              : compareAlphabetically(a, b);
+        });
+
+  final frequentCategories = frequentLimit <= 0
+      ? const <ExpenseCategoryRecord>[]
+      : usedCategories.take(frequentLimit).toList();
+  final frequentIds = frequentCategories.map((category) => category.id).toSet();
+  final remainingCategories =
+      categoriesById.values
+          .where((category) => !frequentIds.contains(category.id))
+          .toList()
+        ..sort(compareAlphabetically);
+
+  return [...frequentCategories, ...remainingCategories];
+}
+
 class ExpenseLocation {
   final String label;
   final String address;

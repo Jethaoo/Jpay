@@ -12,6 +12,7 @@ import 'debt_calculations.dart';
 import 'network_status.dart';
 import 'services/receipt_scanner.dart';
 import 'widgets/expense_maps.dart';
+import 'widgets/group_name_dialog.dart';
 
 class SupabaseGroupDetailsScreen extends StatefulWidget {
   final String groupId;
@@ -33,6 +34,7 @@ class SupabaseGroupDetailsScreen extends StatefulWidget {
 class _SupabaseGroupDetailsScreenState
     extends State<SupabaseGroupDetailsScreen> {
   List<GroupFriendRecord> _latestFriends = const [];
+  List<ExpenseRecord> _latestExpenses = const [];
   final _expenseSearchController = TextEditingController();
   Timer? _searchTimer;
   List<ExpenseRecord>? _searchResults;
@@ -60,43 +62,11 @@ class _SupabaseGroupDetailsScreenState
   }
 
   Future<void> _renameGroup(String currentName) async {
-    final controller = TextEditingController(text: currentName);
-    String? errorText;
     final name = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Rename group'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 60,
-            decoration: InputDecoration(
-              labelText: 'Group name',
-              errorText: errorText,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = controller.text.trim();
-                if (value.isEmpty) {
-                  setDialogState(() => errorText = 'Enter a group name.');
-                  return;
-                }
-                Navigator.pop(dialogContext, value);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) =>
+          GroupNameDialog(title: 'Rename group', initialValue: currentName),
     );
-    controller.dispose();
     if (name == null || name == currentName) return;
     try {
       await widget.repository.renameGroup(widget.groupId, name);
@@ -197,12 +167,19 @@ class _SupabaseGroupDetailsScreenState
   }
 
   Future<void> _showFilters() async {
-    final categories = await widget.repository.watchExpenseCategories().first;
+    final availableCategories = await widget.repository
+        .watchExpenseCategories()
+        .first;
     if (!mounted) return;
+    final categories = orderExpenseCategoriesByUsage(
+      availableCategories,
+      _latestExpenses.map((expense) => expense.categoryId),
+    );
     var category = _categoryFilter;
     var proof = _proofFilter;
-    final merchant = TextEditingController(text: _merchantFilter);
-    final location = TextEditingController(text: _locationFilter);
+    var merchant = _merchantFilter;
+    var location = _locationFilter;
+    var fieldRevision = 0;
     var dates = _dateFilter;
     final applied = await showModalBottomSheet<bool>(
       context: context,
@@ -251,14 +228,18 @@ class _SupabaseGroupDetailsScreenState
                   onChanged: (value) => setSheetState(() => proof = value),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: merchant,
-                  decoration: const InputDecoration(labelText: 'Merchant'),
+                _OwnedModalTextField(
+                  key: ValueKey('merchant-$fieldRevision'),
+                  initialValue: merchant,
+                  label: 'Merchant',
+                  onChanged: (value) => merchant = value,
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: location,
-                  decoration: const InputDecoration(labelText: 'Location'),
+                _OwnedModalTextField(
+                  key: ValueKey('location-$fieldRevision'),
+                  initialValue: location,
+                  label: 'Location',
+                  onChanged: (value) => location = value,
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
@@ -290,8 +271,9 @@ class _SupabaseGroupDetailsScreenState
                           category = null;
                           proof = null;
                           dates = null;
-                          merchant.clear();
-                          location.clear();
+                          merchant = '';
+                          location = '';
+                          fieldRevision++;
                         });
                       },
                       child: const Text('Clear'),
@@ -313,14 +295,12 @@ class _SupabaseGroupDetailsScreenState
       setState(() {
         _categoryFilter = category;
         _proofFilter = proof;
-        _merchantFilter = merchant.text.trim();
-        _locationFilter = location.text.trim();
+        _merchantFilter = merchant.trim();
+        _locationFilter = location.trim();
         _dateFilter = dates;
       });
       await _refreshSearch();
     }
-    merchant.dispose();
-    location.dispose();
   }
 
   Future<void> _deleteExpense(ExpenseRecord expense) async {
@@ -540,6 +520,7 @@ class _SupabaseGroupDetailsScreenState
                     return const Center(child: CircularProgressIndicator());
                   }
                   final expenses = expenseSnapshot.data!;
+                  _latestExpenses = expenses;
                   return StreamBuilder<List<ExpenseShareRecord>>(
                     stream: widget.repository.watchAllExpenseShares(),
                     builder: (context, shareSnapshot) {
@@ -835,6 +816,47 @@ class _SupabaseGroupDetailsScreenState
             );
           }),
       ],
+    );
+  }
+}
+
+class _OwnedModalTextField extends StatefulWidget {
+  final String initialValue;
+  final String label;
+  final ValueChanged<String> onChanged;
+
+  const _OwnedModalTextField({
+    super.key,
+    required this.initialValue,
+    required this.label,
+    required this.onChanged,
+  });
+
+  @override
+  State<_OwnedModalTextField> createState() => _OwnedModalTextFieldState();
+}
+
+class _OwnedModalTextFieldState extends State<_OwnedModalTextField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      onChanged: widget.onChanged,
+      decoration: InputDecoration(labelText: widget.label),
     );
   }
 }
@@ -1196,136 +1218,134 @@ class _ManageFriendsDialogState extends State<_ManageFriendsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      title: Row(
-        children: [
-          const Expanded(child: Text('Manage friends')),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppPalette.blueContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              '${_friends.length}',
-              style: const TextStyle(
-                color: AppPalette.blue,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.58,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _nameController,
-                    autofocus: _friends.isEmpty,
-                    maxLength: 80,
-                    textCapitalization: TextCapitalization.words,
-                    onSubmitted: (_) => _saving ? null : _add(),
-                    decoration: const InputDecoration(
-                      labelText: 'Friend name',
-                      counterText: '',
-                      prefixIcon: Icon(Icons.person_add_outlined),
-                    ),
+    return Dialog.fullscreen(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Manage friends'),
+          actions: [
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppPalette.blueContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_friends.length}',
+                  style: const TextStyle(
+                    color: AppPalette.blue,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(width: 10),
-                IconButton.filled(
-                  onPressed: _saving ? null : _add,
-                  icon: const Icon(Icons.add_rounded),
-                  tooltip: 'Add friend',
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _nameController,
+                        autofocus: _friends.isEmpty,
+                        maxLength: 80,
+                        textCapitalization: TextCapitalization.words,
+                        onSubmitted: (_) => _saving ? null : _add(),
+                        decoration: const InputDecoration(
+                          labelText: 'Friend name',
+                          counterText: '',
+                          prefixIcon: Icon(Icons.person_add_outlined),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton.filled(
+                      onPressed: _saving ? null : _add,
+                      icon: const Icon(Icons.add_rounded),
+                      tooltip: 'Add friend',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (_friends.isNotEmpty)
+                  const Text(
+                    'GROUP FRIENDS',
+                    style: TextStyle(
+                      color: AppPalette.secondaryLabel,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
+                if (_friends.isNotEmpty) const SizedBox(height: 8),
+                Expanded(
+                  child: _friends.isEmpty
+                      ? const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.group_add_outlined,
+                                size: 42,
+                                color: AppPalette.secondaryLabel,
+                              ),
+                              SizedBox(height: 10),
+                              Text(
+                                'No friends yet',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Add someone above to include them in expenses.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: AppPalette.secondaryLabel,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          itemCount: _friends.length,
+                          separatorBuilder: (_, _) => const Divider(),
+                          itemBuilder: (context, index) {
+                            final friend = _friends[index];
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                backgroundColor: AppPalette.surfaceElevated,
+                                child: Text(friend.name[0].toUpperCase()),
+                              ),
+                              title: Text(friend.name),
+                              trailing: IconButton(
+                                onPressed: () => _remove(friend),
+                                color: AppPalette.red,
+                                tooltip: 'Remove ${friend.name}',
+                                icon: const Icon(Icons.remove_circle_outline),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            if (_friends.isNotEmpty)
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'GROUP FRIENDS',
-                  style: TextStyle(
-                    color: AppPalette.secondaryLabel,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.7,
-                  ),
-                ),
-              ),
-            if (_friends.isNotEmpty) const SizedBox(height: 6),
-            Flexible(
-              child: _friends.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 28),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.group_add_outlined,
-                            size: 36,
-                            color: AppPalette.secondaryLabel,
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'No friends yet',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Add someone above to include them in expenses.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppPalette.secondaryLabel,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: _friends.length,
-                      separatorBuilder: (_, _) => const Divider(),
-                      itemBuilder: (context, index) {
-                        final friend = _friends[index];
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundColor: AppPalette.surfaceElevated,
-                            child: Text(friend.name[0].toUpperCase()),
-                          ),
-                          title: Text(friend.name),
-                          trailing: IconButton(
-                            onPressed: () => _remove(friend),
-                            color: AppPalette.red,
-                            tooltip: 'Remove ${friend.name}',
-                            icon: const Icon(Icons.remove_circle_outline),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+          ),
         ),
       ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }
@@ -1415,7 +1435,9 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
   DateTime _expenseDate = DateTime.now();
   double? _receiptTotal;
   ExpenseLocation? _location;
+  List<String?> _usedCategoryIds = const [];
   bool _loadingMetadata = true;
+  bool _optionalDetailsExpanded = false;
   bool _chargesExpanded = false;
   bool _saving = false;
   int _newRowSequence = 0;
@@ -1428,6 +1450,8 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       _titleController.text = expense.title;
       _merchantController.text = expense.merchant;
       _notesController.text = expense.notes;
+      _optionalDetailsExpanded =
+          expense.merchant.trim().isNotEmpty || expense.notes.trim().isNotEmpty;
       _categoryId = expense.categoryId;
       _expenseDate = expense.expenseDate.toLocal();
       _receiptTotal = expense.receiptTotal;
@@ -1456,20 +1480,34 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
     _loadMetadata();
   }
 
+  Future<List<ExpenseRecord>> _readExpenseUsage() async {
+    try {
+      return await widget.repository.watchExpenses(widget.groupId).first;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> _loadMetadata() async {
     try {
       final categoriesFuture = widget.repository.watchExpenseCategories().first;
       final attachmentsFuture = widget.expense == null
           ? Future<List<ExpenseAttachmentRecord>>.value(const [])
           : widget.repository.watchExpenseAttachments(widget.expense!.id).first;
+      final expensesFuture = _readExpenseUsage();
       final values = await Future.wait<dynamic>([
         categoriesFuture,
         attachmentsFuture,
+        expensesFuture,
       ]);
       if (!mounted) return;
       final categories = values[0] as List<ExpenseCategoryRecord>;
       final attachments = values[1] as List<ExpenseAttachmentRecord>;
+      final expenses = values[2] as List<ExpenseRecord>;
       setState(() {
+        _usedCategoryIds = expenses
+            .map((expense) => expense.categoryId)
+            .toList();
         _categoryId ??= categories
             .where((category) => category.name == 'Other')
             .map((category) => category.id)
@@ -1548,50 +1586,129 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
 
   double get _service => _subtotal * _number(_serviceController) / 100;
 
+  String get _optionalDetailsSummary {
+    final details = <String>[];
+    final merchant = _merchantController.text.trim();
+    if (merchant.isNotEmpty) details.add(merchant);
+    if (_notesController.text.trim().isNotEmpty) details.add('Notes added');
+    return details.isEmpty ? 'Optional' : details.join(' · ');
+  }
+
   Future<void> _selectFriends() async {
     final selected = {..._selectedFriendIds};
     final result = await showDialog<Set<String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Select friends'),
-          content: SizedBox(
-            width: 430,
-            child: ListView(
-              shrinkWrap: true,
-              children: widget.friends
-                  .map(
-                    (friend) => CheckboxListTile(
-                      value: selected.contains(friend.id),
-                      title: Text(friend.name),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (checked) => setDialogState(() {
-                        if (checked == true) {
-                          selected.add(friend.id);
-                        } else {
-                          selected.remove(friend.id);
-                        }
-                      }),
+        builder: (context, setDialogState) {
+          final allSelected =
+              widget.friends.isNotEmpty &&
+              widget.friends.every((friend) => selected.contains(friend.id));
+          final someSelected = selected.isNotEmpty && !allSelected;
+          return Dialog.fullscreen(
+            child: Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  tooltip: 'Cancel',
+                  icon: const Icon(Icons.close_rounded),
+                ),
+                title: const Text('Select friends'),
+              ),
+              body: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                      child: Text(
+                        widget.friends.isEmpty
+                            ? 'No friends are available.'
+                            : 'Choose everyone involved in this expense.',
+                        style: const TextStyle(
+                          color: AppPalette.secondaryLabel,
+                        ),
+                      ),
                     ),
-                  )
-                  .toList(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, selected),
-              child: Text(
-                'Use ${selected.length} '
-                '${selected.length == 1 ? 'friend' : 'friends'}',
+                    if (widget.friends.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: CheckboxListTile(
+                          value: someSelected ? null : allSelected,
+                          tristate: true,
+                          title: Text(allSelected ? 'Clear all' : 'Select all'),
+                          subtitle: Text(
+                            '${selected.length} of ${widget.friends.length} selected',
+                          ),
+                          secondary: const Icon(Icons.select_all_rounded),
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          onChanged: (_) => setDialogState(() {
+                            if (allSelected) {
+                              selected.clear();
+                            } else {
+                              selected.addAll(
+                                widget.friends.map((friend) => friend.id),
+                              );
+                            }
+                          }),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                    ],
+                    Expanded(
+                      child: widget.friends.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'Add a friend from the group screen first.',
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+                              itemCount: widget.friends.length,
+                              separatorBuilder: (_, _) => const Divider(),
+                              itemBuilder: (context, index) {
+                                final friend = widget.friends[index];
+                                return CheckboxListTile(
+                                  value: selected.contains(friend.id),
+                                  title: Text(friend.name),
+                                  secondary: CircleAvatar(
+                                    backgroundColor: AppPalette.surfaceElevated,
+                                    child: Text(friend.name[0].toUpperCase()),
+                                  ),
+                                  controlAffinity:
+                                      ListTileControlAffinity.trailing,
+                                  onChanged: (checked) => setDialogState(() {
+                                    if (checked == true) {
+                                      selected.add(friend.id);
+                                    } else {
+                                      selected.remove(friend.id);
+                                    }
+                                  }),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              bottomNavigationBar: SafeArea(
+                minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: FilledButton.icon(
+                  onPressed: widget.friends.isEmpty
+                      ? null
+                      : () => Navigator.pop(dialogContext, selected),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  icon: const Icon(Icons.check_rounded),
+                  label: Text(
+                    'Use ${selected.length} '
+                    '${selected.length == 1 ? 'friend' : 'friends'}',
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
     if (result == null || !mounted) return;
@@ -1630,14 +1747,11 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       }
     }
 
+    final removedRows = _rows
+        .where((row) => !result.contains(row.friend.id))
+        .toList();
     setState(() {
-      final removedRows = _rows
-          .where((row) => !result.contains(row.friend.id))
-          .toList();
       _rows.removeWhere((row) => !result.contains(row.friend.id));
-      for (final row in removedRows) {
-        row.dispose();
-      }
       final existing = _selectedFriendIds;
       for (final friend in widget.friends) {
         if (result.contains(friend.id) && !existing.contains(friend.id)) {
@@ -1650,6 +1764,11 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
         }
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final row in removedRows) {
+        row.dispose();
+      }
+    });
   }
 
   Future<void> _splitEqually() async {
@@ -1657,46 +1776,10 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       _message('Select friends before splitting.');
       return;
     }
-    final controller = TextEditingController();
-    String? errorText;
     final total = await showDialog<double>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Split equally'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Subtotal before tax & service',
-              prefixText: 'RM ',
-              errorText: errorText,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final parsed = double.tryParse(controller.text.trim());
-                if (parsed == null || !parsed.isFinite || parsed <= 0) {
-                  setDialogState(
-                    () => errorText = 'Enter an amount greater than zero.',
-                  );
-                  return;
-                }
-                Navigator.pop(dialogContext, parsed);
-              },
-              child: const Text('Apply split'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => const _SplitExpenseTotalDialog(),
     );
-    controller.dispose();
     if (total == null || !mounted) return;
     final shares = splitCurrencyTotal(total, _rows.length);
     setState(() {
@@ -1734,7 +1817,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       if (confirmed != true) return;
     }
     setState(() => _rows.remove(row));
-    row.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
   }
 
   Future<void> _pickProofs(ImageSource source) async {
@@ -1792,6 +1875,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
         proof.extraction = reviewed;
         if (reviewed.merchant.isNotEmpty) {
           _merchantController.text = reviewed.merchant;
+          _optionalDetailsExpanded = true;
         }
         if (reviewed.total != null) _receiptTotal = reviewed.total;
         if (reviewed.date != null) _expenseDate = reviewed.date!;
@@ -1803,120 +1887,11 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
     }
   }
 
-  Future<ReceiptExtraction?> _reviewExtraction(
-    ReceiptExtraction extraction,
-  ) async {
-    final merchant = TextEditingController(text: extraction.merchant);
-    final total = TextEditingController(
-      text: extraction.total?.toStringAsFixed(2) ?? '',
-    );
-    final date = TextEditingController(
-      text: extraction.date?.toIso8601String().split('T').first ?? '',
-    );
-    final rawText = TextEditingController(text: extraction.rawText);
-    final result = await showDialog<ReceiptExtraction>(
+  Future<ReceiptExtraction?> _reviewExtraction(ReceiptExtraction extraction) {
+    return showDialog<ReceiptExtraction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Review receipt scan'),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextField(
-                  controller: merchant,
-                  decoration: const InputDecoration(labelText: 'Merchant'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: total,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Receipt total',
-                    prefixText: 'RM ',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: date,
-                  decoration: const InputDecoration(
-                    labelText: 'Date',
-                    hintText: 'YYYY-MM-DD',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: rawText,
-                  minLines: 5,
-                  maxLines: 10,
-                  decoration: const InputDecoration(
-                    labelText: 'Recognized receipt text',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-                if (extraction.items.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${extraction.items.length} purchased items detected',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  ...extraction.items
-                      .take(12)
-                      .map(
-                        (item) => ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(item.description),
-                          trailing: item.amount == null
-                              ? null
-                              : Text('RM ${item.amount!.toStringAsFixed(2)}'),
-                        ),
-                      ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsedTotal = total.text.trim().isEmpty
-                  ? null
-                  : double.tryParse(total.text.trim());
-              final parsedDate = date.text.trim().isEmpty
-                  ? null
-                  : DateTime.tryParse(date.text.trim());
-              Navigator.pop(
-                dialogContext,
-                ReceiptExtraction(
-                  rawText: rawText.text.trim(),
-                  merchant: merchant.text.trim(),
-                  total: parsedTotal,
-                  date: parsedDate,
-                  items: extraction.items,
-                  script: extraction.script,
-                ),
-              );
-            },
-            child: const Text('Apply reviewed data'),
-          ),
-        ],
-      ),
+      builder: (_) => _ReceiptReviewDialog(extraction: extraction),
     );
-    merchant.dispose();
-    total.dispose();
-    date.dispose();
-    rawText.dispose();
-    return result;
   }
 
   Future<void> _chooseLocation() async {
@@ -1939,10 +1914,16 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
     if (picked != null && mounted) setState(() => _expenseDate = picked);
   }
 
-  Future<void> _createCategory() async {
+  Future<void> _createCategory(
+    List<ExpenseCategoryRecord> availableCategories,
+  ) async {
     final name = await showDialog<String>(
       context: context,
-      builder: (_) => const _CreateExpenseCategoryDialog(),
+      builder: (_) => _CreateExpenseCategoryDialog(
+        existingNames: availableCategories
+            .map((category) => category.name)
+            .toList(),
+      ),
     );
     if (name == null || !mounted) return;
     try {
@@ -1954,8 +1935,47 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
         });
       }
     } catch (error) {
+      if (_isDuplicateCategoryError(error)) {
+        try {
+          final categories = await widget.repository
+              .watchExpenseCategories()
+              .first;
+          final normalizedName = name.trim().toLowerCase();
+          final existing = categories
+              .where(
+                (category) =>
+                    category.name.trim().toLowerCase() == normalizedName,
+              )
+              .firstOrNull;
+          if (existing != null && mounted) {
+            setState(() {
+              _locallyCreatedCategories[existing.id] = existing;
+              _categoryId = existing.id;
+            });
+            _message(
+              'The category "${existing.name}" already exists and has '
+              'been selected.',
+            );
+            return;
+          }
+        } catch (_) {
+          // Fall through to the specific duplicate message.
+        }
+        _message(
+          'A category named "$name" already exists. Choose it from the list.',
+        );
+        return;
+      }
       _message(networkAwareErrorMessage(error, action: 'create this category'));
     }
+  }
+
+  bool _isDuplicateCategoryError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('23505') ||
+        message.contains('expense_categories_owner_name_unique') ||
+        (message.contains('duplicate key') &&
+            message.contains('expense_categories'));
   }
 
   Future<void> _splitReceiptTotal() async {
@@ -2178,17 +2198,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
                         prefixIcon: Icon(Icons.edit_note_outlined),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _merchantController,
-                      textCapitalization: TextCapitalization.words,
-                      maxLength: 120,
-                      decoration: const InputDecoration(
-                        labelText: 'Merchant (optional)',
-                        prefixIcon: Icon(Icons.storefront_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 10),
                     StreamBuilder<List<ExpenseCategoryRecord>>(
                       stream: widget.repository.watchExpenseCategories(),
                       builder: (context, snapshot) {
@@ -2200,12 +2210,10 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
                           categoriesById[category.id] = category;
                         }
                         categoriesById.addAll(_locallyCreatedCategories);
-                        final categories = categoriesById.values.toList()
-                          ..sort(
-                            (a, b) => a.name.toLowerCase().compareTo(
-                              b.name.toLowerCase(),
-                            ),
-                          );
+                        final categories = orderExpenseCategoriesByUsage(
+                          categoriesById.values,
+                          _usedCategoryIds,
+                        );
                         final value = categoriesById.containsKey(_categoryId)
                             ? _categoryId
                             : null;
@@ -2240,7 +2248,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
                             ),
                             const SizedBox(width: 8),
                             IconButton.outlined(
-                              onPressed: _createCategory,
+                              onPressed: () => _createCategory(categories),
                               tooltip: 'Create category',
                               icon: const Icon(Icons.add_rounded),
                             ),
@@ -2248,19 +2256,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
                         );
                       },
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _notesController,
-                      minLines: 2,
-                      maxLines: 5,
-                      maxLength: 2000,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Expense notes (optional)',
-                        alignLabelWithHint: true,
-                        prefixIcon: Icon(Icons.notes_outlined),
-                      ),
-                    ),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -2302,6 +2298,65 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
                           icon: const Icon(Icons.close_rounded),
                         ),
                       ),
+                    const SizedBox(height: 10),
+                    Material(
+                      color: AppPalette.surfaceElevated,
+                      borderRadius: BorderRadius.circular(16),
+                      child: ListTile(
+                        dense: true,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        onTap: () => setState(
+                          () => _optionalDetailsExpanded =
+                              !_optionalDetailsExpanded,
+                        ),
+                        leading: const Icon(Icons.info_outline_rounded),
+                        title: const Text(
+                          'Merchant & notes',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          _optionalDetailsSummary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Icon(
+                          _optionalDetailsExpanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                        ),
+                      ),
+                    ),
+                    if (_optionalDetailsExpanded) ...[
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _merchantController,
+                        textCapitalization: TextCapitalization.words,
+                        maxLength: 120,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Merchant (optional)',
+                          counterText: '',
+                          prefixIcon: Icon(Icons.storefront_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _notesController,
+                        minLines: 1,
+                        maxLines: 4,
+                        maxLength: 2000,
+                        onChanged: (_) => setState(() {}),
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText: 'Expense notes (optional)',
+                          counterText: '',
+                          alignLabelWithHint: true,
+                          prefixIcon: Icon(Icons.notes_outlined),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Row(
                       children: [
@@ -2472,17 +2527,31 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Text(
-                            '${_selectedFriendIds.length} selected',
-                            style: const TextStyle(
-                              color: AppPalette.secondaryLabel,
+                          Expanded(
+                            child: Text(
+                              '${_selectedFriendIds.length} selected',
+                              style: const TextStyle(
+                                color: AppPalette.secondaryLabel,
+                              ),
                             ),
                           ),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: _splitEqually,
-                            icon: const Icon(Icons.balance_outlined, size: 18),
-                            label: const Text('Split equally'),
+                          Flexible(
+                            flex: 2,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: _splitEqually,
+                                icon: const Icon(
+                                  Icons.balance_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text(
+                                  'Split equally',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -2633,8 +2702,230 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
   }
 }
 
+class _ReceiptReviewDialog extends StatefulWidget {
+  final ReceiptExtraction extraction;
+
+  const _ReceiptReviewDialog({required this.extraction});
+
+  @override
+  State<_ReceiptReviewDialog> createState() => _ReceiptReviewDialogState();
+}
+
+class _ReceiptReviewDialogState extends State<_ReceiptReviewDialog> {
+  late final TextEditingController _merchantController;
+  late final TextEditingController _totalController;
+  late final TextEditingController _dateController;
+  late final TextEditingController _rawTextController;
+
+  @override
+  void initState() {
+    super.initState();
+    final extraction = widget.extraction;
+    _merchantController = TextEditingController(text: extraction.merchant);
+    _totalController = TextEditingController(
+      text: extraction.total?.toStringAsFixed(2) ?? '',
+    );
+    _dateController = TextEditingController(
+      text: extraction.date?.toIso8601String().split('T').first ?? '',
+    );
+    _rawTextController = TextEditingController(text: extraction.rawText);
+  }
+
+  @override
+  void dispose() {
+    _merchantController.dispose();
+    _totalController.dispose();
+    _dateController.dispose();
+    _rawTextController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final parsedTotal = _totalController.text.trim().isEmpty
+        ? null
+        : double.tryParse(_totalController.text.trim());
+    final parsedDate = _dateController.text.trim().isEmpty
+        ? null
+        : DateTime.tryParse(_dateController.text.trim());
+    FocusScope.of(context).unfocus();
+    Navigator.pop(
+      context,
+      ReceiptExtraction(
+        rawText: _rawTextController.text.trim(),
+        merchant: _merchantController.text.trim(),
+        total: parsedTotal,
+        date: parsedDate,
+        items: widget.extraction.items,
+        script: widget.extraction.script,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final extraction = widget.extraction;
+    return Dialog.fullscreen(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'Cancel',
+            icon: const Icon(Icons.close_rounded),
+          ),
+          title: const Text('Review receipt scan'),
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _merchantController,
+                  decoration: const InputDecoration(labelText: 'Merchant'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _totalController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Receipt total (RM)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _dateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Date',
+                    hintText: 'YYYY-MM-DD',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _rawTextController,
+                  minLines: 5,
+                  maxLines: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'Recognized receipt text',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                if (extraction.items.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    '${extraction.items.length} purchased items detected',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  ...extraction.items
+                      .take(12)
+                      .map(
+                        (item) => ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(item.description),
+                          trailing: item.amount == null
+                              ? null
+                              : Text('RM ${item.amount!.toStringAsFixed(2)}'),
+                        ),
+                      ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton(
+            onPressed: _submit,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            child: const Text('Apply reviewed data'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SplitExpenseTotalDialog extends StatefulWidget {
+  const _SplitExpenseTotalDialog();
+
+  @override
+  State<_SplitExpenseTotalDialog> createState() =>
+      _SplitExpenseTotalDialogState();
+}
+
+class _SplitExpenseTotalDialogState extends State<_SplitExpenseTotalDialog> {
+  final _controller = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final parsed = double.tryParse(_controller.text.trim());
+    if (parsed == null || !parsed.isFinite || parsed <= 0) {
+      setState(() => _errorText = 'Enter an amount greater than zero.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    Navigator.pop(context, parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      scrollable: true,
+      title: const Text('Split equally'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Enter the subtotal before tax and service charges.',
+            style: TextStyle(color: AppPalette.secondaryLabel),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+            onChanged: (_) {
+              if (_errorText != null) setState(() => _errorText = null);
+            },
+            decoration: InputDecoration(
+              labelText: 'Total to split (RM)',
+              hintText: '0.00',
+              errorText: _errorText,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Apply split')),
+      ],
+    );
+  }
+}
+
 class _CreateExpenseCategoryDialog extends StatefulWidget {
-  const _CreateExpenseCategoryDialog();
+  final List<String> existingNames;
+
+  const _CreateExpenseCategoryDialog({required this.existingNames});
 
   @override
   State<_CreateExpenseCategoryDialog> createState() =>
@@ -2644,6 +2935,7 @@ class _CreateExpenseCategoryDialog extends StatefulWidget {
 class _CreateExpenseCategoryDialogState
     extends State<_CreateExpenseCategoryDialog> {
   final _controller = TextEditingController();
+  String? _errorText;
 
   @override
   void dispose() {
@@ -2653,7 +2945,22 @@ class _CreateExpenseCategoryDialogState
 
   void _submit() {
     final value = _controller.text.trim();
-    if (value.isEmpty) return;
+    if (value.isEmpty) {
+      setState(() => _errorText = 'Enter a category name.');
+      return;
+    }
+    final normalizedValue = value.toLowerCase();
+    final existingName = widget.existingNames
+        .where((name) => name.trim().toLowerCase() == normalizedValue)
+        .firstOrNull;
+    if (existingName != null) {
+      setState(
+        () => _errorText =
+            'The category "$existingName" already exists. Choose it from '
+            'the list.',
+      );
+      return;
+    }
     FocusScope.of(context).unfocus();
     Navigator.pop(context, value);
   }
@@ -2668,7 +2975,14 @@ class _CreateExpenseCategoryDialogState
         maxLength: 40,
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _submit(),
-        decoration: const InputDecoration(labelText: 'Category name'),
+        onChanged: (_) {
+          if (_errorText != null) setState(() => _errorText = null);
+        },
+        decoration: InputDecoration(
+          labelText: 'Category name',
+          errorText: _errorText,
+          helperText: 'Names are not case-sensitive.',
+        ),
       ),
       actions: [
         TextButton(
@@ -2743,8 +3057,7 @@ class _ParticipantCard extends StatelessWidget {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => onChanged(),
             decoration: const InputDecoration(
-              labelText: 'Amount owed',
-              prefixText: 'RM ',
+              labelText: 'Amount owed (RM)',
               hintText: '0.00',
             ),
           ),

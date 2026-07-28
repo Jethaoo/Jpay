@@ -6,11 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_theme.dart';
 import 'backend/backend_models.dart';
-import 'backend/supabase_jpay_repository.dart';
+import 'backend/jpay_repository.dart';
 import 'network_status.dart';
 
 class SupabaseProfileScreen extends StatefulWidget {
-  final SupabaseJpayRepository repository;
+  final JpayRepository repository;
 
   const SupabaseProfileScreen({super.key, required this.repository});
 

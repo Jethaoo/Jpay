@@ -11,6 +11,14 @@ abstract final class BackendConfig {
   static const String supabasePublishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',
   );
+  static const bool enablePasswordRecovery = bool.fromEnvironment(
+    'ENABLE_PASSWORD_RECOVERY',
+    defaultValue: false,
+  );
+  static const String passwordRecoveryRedirectUrl = String.fromEnvironment(
+    'PASSWORD_RECOVERY_REDIRECT_URL',
+    defaultValue: 'com.example.jpay://reset-callback/',
+  );
 
   static bool get hasSupabaseCredentials =>
       supabaseUrl.trim().isNotEmpty && supabasePublishableKey.trim().isNotEmpty;

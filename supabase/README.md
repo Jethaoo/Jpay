@@ -93,7 +93,8 @@ Deferred for multi-user onboarding:
    imported account.
 2. Allow-list `com.example.jpay://reset-callback/` in the hosted Supabase Auth
    redirect settings. The Android and iOS app manifests already register it.
-3. Implement and test the Supabase Auth recovery/update-password screen.
+3. Enable `ENABLE_PASSWORD_RECOVERY` and test the implemented recovery and
+   update-password screens on a release build.
 4. Replace debug release signing with a private production upload key.
 
 When importing legacy paid shares without a `paidAt` value, assign the expense

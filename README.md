@@ -82,6 +82,22 @@ flutter run `
   --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 ```
 
+Password recovery is implemented but hidden by default. Enable it only after
+custom SMTP delivery is verified and
+`com.example.jpay://reset-callback/` is allow-listed in the hosted Supabase
+Auth redirect settings:
+
+```powershell
+flutter run `
+  --dart-define=SUPABASE_URL=https://PROJECT.supabase.co `
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME `
+  --dart-define=ENABLE_PASSWORD_RECOVERY=true `
+  --dart-define=PASSWORD_RECOVERY_REDIRECT_URL=com.example.jpay://reset-callback/
+```
+
+The redirect define is optional and defaults to the registered Jpay mobile
+scheme shown above.
+
 Map service endpoints are configurable without a new build:
 
 ```powershell

@@ -70,7 +70,8 @@ objects were available to copy.
 - Allow-list `com.example.jpay://reset-callback/` in hosted Supabase Auth. The
   Android and iOS app manifests already register this mobile recovery deep
   link.
-- Implement the Supabase recovery and update-password screens.
+- The Supabase recovery and update-password screens are implemented behind
+  `ENABLE_PASSWORD_RECOVERY`; enable them only after SMTP and redirect testing.
 - Complete an interactive device smoke test of expense and friend mutations.
 - Replace the debug release signing key before Google Play distribution.
 - Keep Firebase available as a rollback source through the agreed rollback

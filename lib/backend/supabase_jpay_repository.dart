@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import 'backend_models.dart';
+import 'date_serialization.dart';
 import 'jpay_repository.dart';
 
 class SupabaseJpayRepository implements JpayRepository {
@@ -114,7 +115,24 @@ class SupabaseJpayRepository implements JpayRepository {
 
   @override
   Future<void> deleteGroup(String groupId) async {
+    final attachments = await _client
+        .from('expense_attachments')
+        .select('storage_path, expenses!inner(group_id)')
+        .eq('expenses.group_id', groupId);
+    final paths = (attachments as List<dynamic>)
+        .map((row) => (row as Map<String, dynamic>)['storage_path'] as String)
+        .toList();
+
     await _client.from('groups').delete().eq('id', groupId);
+
+    if (paths.isNotEmpty) {
+      try {
+        await deleteExpenseProofs(paths);
+      } catch (_) {
+        // Metadata deletion is authoritative; stale private objects can be
+        // cleaned on a later authenticated maintenance pass.
+      }
+    }
   }
 
   @override
@@ -152,7 +170,7 @@ class SupabaseJpayRepository implements JpayRepository {
         'p_attachments': expense.attachments
             .map((attachment) => attachment.toRpcJson())
             .toList(),
-        'p_expense_date': expense.expenseDate?.toIso8601String(),
+        'p_expense_date': serializeTimestamptz(expense.expenseDate),
       },
     );
     return result as String;
@@ -176,7 +194,7 @@ class SupabaseJpayRepository implements JpayRepository {
         'p_attachments': expense.attachments
             .map((attachment) => attachment.toRpcJson())
             .toList(),
-        'p_expense_date': expense.expenseDate?.toIso8601String(),
+        'p_expense_date': serializeTimestamptz(expense.expenseDate),
       },
     );
   }
@@ -208,8 +226,8 @@ class SupabaseJpayRepository implements JpayRepository {
         'p_category_id': query.categoryId,
         'p_merchant': query.merchant.trim(),
         'p_location': query.location.trim(),
-        'p_from_date': query.fromDate?.toIso8601String(),
-        'p_to_date': query.toDate?.toIso8601String(),
+        'p_from_date': serializeTimestamptz(query.fromDate),
+        'p_to_date': serializeTimestamptz(query.toDate),
         'p_has_proof': query.hasProof,
         'p_limit': query.limit,
         'p_offset': query.offset,

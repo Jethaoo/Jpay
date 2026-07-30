@@ -10,8 +10,10 @@ import 'backend/backend_models.dart';
 import 'backend/jpay_repository.dart';
 import 'debt_calculations.dart';
 import 'network_status.dart';
+import 'services/expense_map_launcher.dart';
 import 'services/receipt_scanner.dart';
 import 'widgets/app_ui.dart';
+import 'widgets/expense_location_action.dart';
 import 'widgets/expense_maps.dart';
 import 'widgets/group_name_dialog.dart';
 
@@ -36,6 +38,7 @@ class _SupabaseGroupDetailsScreenState
     extends State<SupabaseGroupDetailsScreen> {
   List<GroupFriendRecord> _latestFriends = const [];
   List<ExpenseRecord> _latestExpenses = const [];
+  final _expenseMapLauncher = ExpenseMapLauncher();
   final _expenseSearchController = TextEditingController();
   Timer? _searchTimer;
   List<ExpenseRecord>? _searchResults;
@@ -812,6 +815,7 @@ class _SupabaseGroupDetailsScreenState
                     },
                     onMarkPaid: _markSharePaid,
                     onOpenProof: () => _openProofs(expense),
+                    onOpenLocation: _expenseMapLauncher.openMarker,
                   ),
                 ),
               );
@@ -829,6 +833,7 @@ class _SupabaseGroupDetailsScreenState
                 onDelete: () => _deleteExpense(expense),
                 onMarkPaid: _markSharePaid,
                 onOpenProof: () => _openProofs(expense),
+                onOpenLocation: _expenseMapLauncher.openMarker,
               ),
             );
           }),
@@ -967,6 +972,7 @@ class _ExpenseHistoryCard extends StatelessWidget {
   final VoidCallback onDelete;
   final ValueChanged<ExpenseShareRecord> onMarkPaid;
   final VoidCallback onOpenProof;
+  final ExpenseLocationOpener onOpenLocation;
 
   const _ExpenseHistoryCard({
     required this.expense,
@@ -975,6 +981,7 @@ class _ExpenseHistoryCard extends StatelessWidget {
     required this.onDelete,
     required this.onMarkPaid,
     required this.onOpenProof,
+    required this.onOpenLocation,
   });
 
   @override
@@ -1053,36 +1060,51 @@ class _ExpenseHistoryCard extends StatelessWidget {
               expense.attachmentCount > 0)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    if (expense.location != null)
-                      Chip(
-                        avatar: const Icon(Icons.place_outlined, size: 17),
-                        label: Text(expense.location!.label),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (expense.location != null)
+                    ExpenseLocationAction(
+                      location: expense.location!,
+                      openLocation: onOpenLocation,
+                    ),
+                  if (expense.location != null &&
+                      (expense.attachmentCount > 0 || expense.notes.isNotEmpty))
+                    const SizedBox(height: AppSpacing.sm),
+                  if (expense.attachmentCount > 0 || expense.notes.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          if (expense.attachmentCount > 0)
+                            ActionChip(
+                              onPressed: onOpenProof,
+                              avatar: const Icon(
+                                Icons.attach_file_rounded,
+                                size: 17,
+                              ),
+                              label: Text(
+                                '${expense.attachmentCount} '
+                                '${expense.attachmentCount == 1 ? 'proof' : 'proofs'}',
+                              ),
+                            ),
+                          if (expense.notes.isNotEmpty)
+                            Chip(
+                              avatar: const Icon(
+                                Icons.notes_outlined,
+                                size: 17,
+                              ),
+                              label: Text(
+                                expense.notes,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
                       ),
-                    if (expense.attachmentCount > 0)
-                      ActionChip(
-                        onPressed: onOpenProof,
-                        avatar: const Icon(Icons.attach_file_rounded, size: 17),
-                        label: Text(
-                          '${expense.attachmentCount} '
-                          '${expense.attachmentCount == 1 ? 'proof' : 'proofs'}',
-                        ),
-                      ),
-                    if (expense.notes.isNotEmpty)
-                      Chip(
-                        avatar: const Icon(Icons.notes_outlined, size: 17),
-                        label: Text(
-                          expense.notes,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
           if (chargeParts.isNotEmpty)

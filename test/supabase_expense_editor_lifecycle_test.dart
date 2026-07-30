@@ -315,6 +315,62 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('expense history expands to a complete actionable address', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const address =
+        'Lot 3.04-3.06, Central Market, Jalan Hang Kasturi, City Centre, '
+        '50050 Kuala Lumpur, Malaysia';
+    final repository = _ExpenseEditorRepository(
+      expenses: [
+        ExpenseRecord(
+          id: 'expense-1',
+          groupId: 'group-1',
+          title: 'Dinner',
+          baseTotal: 24,
+          taxPercent: 0,
+          servicePercent: 0,
+          taxAmount: 0,
+          serviceAmount: 0,
+          totalWithCharges: 24,
+          expenseDate: DateTime(2026, 7, 29),
+          location: const ExpenseLocation(
+            label: 'Central Market',
+            address: address,
+            latitude: 3.1453,
+            longitude: 101.6955,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: SupabaseGroupDetailsScreen(
+          groupId: 'group-1',
+          initialName: 'Weekend',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(address), findsNothing);
+    await tester.tap(find.text('Dinner'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Central Market'), findsOneWidget);
+    expect(find.text(address), findsOneWidget);
+    expect(find.byTooltip('Open in maps'), findsOneWidget);
+    final addressText = tester.widget<Text>(find.text(address));
+    expect(addressText.maxLines, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('saved proofs open in a navigable viewer with clear metadata', (
     tester,
   ) async {

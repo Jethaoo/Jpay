@@ -47,6 +47,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.16.0
   http: ^1.6.0
   latlong2: ^0.10.1
+  url_launcher: ^6.3.2
   uuid: ^4.5.2
 
 dev_dependencies:
@@ -70,6 +71,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/branding/jpay_app_icon_1024.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

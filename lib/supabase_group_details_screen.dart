@@ -10,7 +10,10 @@ import 'backend/backend_models.dart';
 import 'backend/jpay_repository.dart';
 import 'debt_calculations.dart';
 import 'network_status.dart';
+import 'services/expense_map_launcher.dart';
 import 'services/receipt_scanner.dart';
+import 'widgets/app_ui.dart';
+import 'widgets/expense_location_action.dart';
 import 'widgets/expense_maps.dart';
 import 'widgets/group_name_dialog.dart';
 
@@ -35,6 +38,7 @@ class _SupabaseGroupDetailsScreenState
     extends State<SupabaseGroupDetailsScreen> {
   List<GroupFriendRecord> _latestFriends = const [];
   List<ExpenseRecord> _latestExpenses = const [];
+  final _expenseMapLauncher = ExpenseMapLauncher();
   final _expenseSearchController = TextEditingController();
   Timer? _searchTimer;
   List<ExpenseRecord>? _searchResults;
@@ -341,6 +345,13 @@ class _SupabaseGroupDetailsScreenState
       final attachments = await widget.repository
           .watchExpenseAttachments(expense.id)
           .first;
+      if (!mounted) return;
+      if (attachments.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No proof images are attached.')),
+        );
+        return;
+      }
       final urls = await Future.wait(
         attachments.map(
           (attachment) =>
@@ -348,34 +359,20 @@ class _SupabaseGroupDetailsScreenState
         ),
       );
       if (!mounted) return;
-      if (urls.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No proof images are attached.')),
-        );
-        return;
-      }
       await showDialog<void>(
         context: context,
         builder: (context) => Dialog.fullscreen(
-          child: Scaffold(
-            appBar: AppBar(title: Text('${expense.title} · Proof')),
-            body: PageView.builder(
-              itemCount: urls.length,
-              itemBuilder: (context, index) => InteractiveViewer(
-                child: Center(
-                  child: Image.network(
-                    urls[index],
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, progress) =>
-                        progress == null
-                        ? child
-                        : const CircularProgressIndicator(),
-                    errorBuilder: (_, _, _) =>
-                        const Text('Could not load this proof image.'),
-                  ),
+          child: _ProofViewer(
+            expenseTitle: expense.title,
+            items: [
+              for (var index = 0; index < attachments.length; index++)
+                _ProofViewerItem(
+                  filename: attachments[index].originalFilename,
+                  sizeBytes: attachments[index].sizeBytes,
+                  remoteUrl: urls[index],
+                  scanReviewed: attachments[index].extraction != null,
                 ),
-              ),
-            ),
+            ],
           ),
         ),
       );
@@ -501,7 +498,7 @@ class _SupabaseGroupDetailsScreenState
                 );
               }
               if (!friendSnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const AppLoadingList(itemCount: 4);
               }
               final friends = friendSnapshot.data!;
               _latestFriends = friends;
@@ -517,7 +514,7 @@ class _SupabaseGroupDetailsScreenState
                     );
                   }
                   if (!expenseSnapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const AppLoadingList(itemCount: 4);
                   }
                   final expenses = expenseSnapshot.data!;
                   _latestExpenses = expenses;
@@ -533,7 +530,7 @@ class _SupabaseGroupDetailsScreenState
                         );
                       }
                       if (!shareSnapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const AppLoadingList(itemCount: 4);
                       }
                       final expenseIds = expenses
                           .map((expense) => expense.id)
@@ -561,6 +558,9 @@ class _SupabaseGroupDetailsScreenState
     List<ExpenseShareRecord> shares,
   ) {
     final visibleExpenses = _searchResults ?? expenses;
+    final hasLocatedExpenses = visibleExpenses.any(
+      (expense) => expense.location != null,
+    );
     final balances = <String, _FriendBalance>{};
     for (final share in shares) {
       if (share.paid) continue;
@@ -609,18 +609,33 @@ class _SupabaseGroupDetailsScreenState
               Icons.account_balance_wallet_outlined,
               color: Colors.white,
             ),
-            title: const Text(
-              'Outstanding balances',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
+            title: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Outstanding to you',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  'RM ${outstandingTotal.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: balanceList.isEmpty
+                        ? AppPalette.green
+                        : AppPalette.orange,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                  ),
+                ),
+              ],
             ),
             subtitle: Text(
               balanceList.isEmpty
                   ? 'Everyone is settled'
-                  : 'RM ${outstandingTotal.toStringAsFixed(2)} • '
-                        '${balanceList.length} ${balanceList.length == 1 ? 'friend owes' : 'friends owe'}',
+                  : '${balanceList.length} ${balanceList.length == 1 ? 'friend has' : 'friends have'} unpaid shares',
               style: TextStyle(
                 color: balanceList.isEmpty
                     ? AppPalette.green
@@ -724,11 +739,10 @@ class _SupabaseGroupDetailsScreenState
         const SizedBox(height: 10),
         Row(
           children: [
-            FilterChip(
-              selected: _hasDiscoveryFilter,
-              avatar: const Icon(Icons.tune_rounded, size: 18),
-              label: Text(_hasDiscoveryFilter ? 'Filters active' : 'Filters'),
-              onSelected: (_) => _showFilters(),
+            FilledButton.tonalIcon(
+              onPressed: _showFilters,
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              label: Text(_hasDiscoveryFilter ? 'Edit filters' : 'Filter'),
             ),
             if (_searching) ...[
               const SizedBox(width: 12),
@@ -739,27 +753,32 @@ class _SupabaseGroupDetailsScreenState
               ),
             ],
             const Spacer(),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: false,
-                  icon: Icon(Icons.view_list_rounded),
-                  tooltip: 'List view',
-                ),
-                ButtonSegment(
-                  value: true,
-                  icon: Icon(Icons.map_outlined),
-                  tooltip: 'Map view',
-                ),
-              ],
-              selected: {_showMap},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) {
-                setState(() => _showMap = selection.first);
-              },
-            ),
+            if (hasLocatedExpenses)
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    icon: Icon(Icons.view_list_rounded),
+                    tooltip: 'List view',
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    icon: Icon(Icons.map_outlined),
+                    tooltip: 'Map view',
+                  ),
+                ],
+                selected: {_showMap},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) {
+                  setState(() => _showMap = selection.first);
+                },
+              ),
           ],
         ),
+        if (_hasDiscoveryFilter) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _buildActiveFilters(expenses),
+        ],
         const SizedBox(height: 12),
         if (visibleExpenses.isEmpty)
           _hasDiscoveryFilter
@@ -773,13 +792,14 @@ class _SupabaseGroupDetailsScreenState
                   ),
                 )
               : _EmptyExpenseState(hasFriends: friends.isNotEmpty)
-        else if (_showMap)
+        else if (_showMap && hasLocatedExpenses)
           ExpenseHistoryMap(
             expenses: visibleExpenses,
             onSelected: (expense) {
               final expenseShares = sharesByExpense[expense.id] ?? const [];
               showModalBottomSheet<void>(
                 context: context,
+                isScrollControlled: true,
                 builder: (context) => Padding(
                   padding: const EdgeInsets.all(16),
                   child: _ExpenseHistoryCard(
@@ -795,6 +815,7 @@ class _SupabaseGroupDetailsScreenState
                     },
                     onMarkPaid: _markSharePaid,
                     onOpenProof: () => _openProofs(expense),
+                    onOpenLocation: _expenseMapLauncher.openMarker,
                   ),
                 ),
               );
@@ -812,9 +833,85 @@ class _SupabaseGroupDetailsScreenState
                 onDelete: () => _deleteExpense(expense),
                 onMarkPaid: _markSharePaid,
                 onOpenProof: () => _openProofs(expense),
+                onOpenLocation: _expenseMapLauncher.openMarker,
               ),
             );
           }),
+      ],
+    );
+  }
+
+  Widget _buildActiveFilters(List<ExpenseRecord> expenses) {
+    String? categoryName;
+    if (_categoryFilter != null) {
+      for (final expense in expenses) {
+        if (expense.categoryId == _categoryFilter) {
+          categoryName = expense.categoryName;
+          break;
+        }
+      }
+    }
+    return Wrap(
+      spacing: AppSpacing.xs,
+      runSpacing: AppSpacing.xs,
+      children: [
+        if (_expenseSearchController.text.trim().isNotEmpty)
+          InputChip(
+            label: Text('“${_expenseSearchController.text.trim()}”'),
+            avatar: const Icon(Icons.search_rounded, size: 16),
+            onDeleted: () {
+              _expenseSearchController.clear();
+              _refreshSearch();
+            },
+          ),
+        if (_categoryFilter != null)
+          InputChip(
+            label: Text(categoryName ?? 'Category'),
+            avatar: const Icon(Icons.category_outlined, size: 16),
+            onDeleted: () {
+              setState(() => _categoryFilter = null);
+              _refreshSearch();
+            },
+          ),
+        if (_proofFilter != null)
+          InputChip(
+            label: Text(_proofFilter! ? 'Has proof' : 'No proof'),
+            avatar: const Icon(Icons.attach_file_rounded, size: 16),
+            onDeleted: () {
+              setState(() => _proofFilter = null);
+              _refreshSearch();
+            },
+          ),
+        if (_merchantFilter.isNotEmpty)
+          InputChip(
+            label: Text(_merchantFilter),
+            avatar: const Icon(Icons.storefront_outlined, size: 16),
+            onDeleted: () {
+              setState(() => _merchantFilter = '');
+              _refreshSearch();
+            },
+          ),
+        if (_locationFilter.isNotEmpty)
+          InputChip(
+            label: Text(_locationFilter),
+            avatar: const Icon(Icons.place_outlined, size: 16),
+            onDeleted: () {
+              setState(() => _locationFilter = '');
+              _refreshSearch();
+            },
+          ),
+        if (_dateFilter != null)
+          InputChip(
+            label: Text(
+              '${_dateFilter!.start.day}/${_dateFilter!.start.month}–'
+              '${_dateFilter!.end.day}/${_dateFilter!.end.month}',
+            ),
+            avatar: const Icon(Icons.date_range_outlined, size: 16),
+            onDeleted: () {
+              setState(() => _dateFilter = null);
+              _refreshSearch();
+            },
+          ),
       ],
     );
   }
@@ -875,6 +972,7 @@ class _ExpenseHistoryCard extends StatelessWidget {
   final VoidCallback onDelete;
   final ValueChanged<ExpenseShareRecord> onMarkPaid;
   final VoidCallback onOpenProof;
+  final ExpenseLocationOpener onOpenLocation;
 
   const _ExpenseHistoryCard({
     required this.expense,
@@ -883,6 +981,7 @@ class _ExpenseHistoryCard extends StatelessWidget {
     required this.onDelete,
     required this.onMarkPaid,
     required this.onOpenProof,
+    required this.onOpenLocation,
   });
 
   @override
@@ -922,24 +1021,16 @@ class _ExpenseHistoryCard extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
-            if (allPaid) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppPalette.greenContainer,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'All Paid',
-                  style: TextStyle(
-                    color: AppPalette.green,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              'RM ${expense.totalWithCharges.toStringAsFixed(2)}',
+              maxLines: 1,
+              style: TextStyle(
+                color: allPaid ? AppPalette.secondaryLabel : AppPalette.label,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
               ),
-            ],
+            ),
           ],
         ),
         subtitle: Text(
@@ -950,51 +1041,70 @@ class _ExpenseHistoryCard extends StatelessWidget {
             '${shares.length} ${shares.length == 1 ? 'person' : 'people'}',
           ].join(' · '),
         ),
-        trailing: SizedBox(
-          width: 88,
-          child: Text(
-            'RM ${expense.totalWithCharges.toStringAsFixed(2)}',
-            maxLines: 1,
-            textAlign: TextAlign.end,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
         children: [
+          if (allPaid)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: AppStatusPill(
+                  label: 'All paid',
+                  foreground: AppPalette.green,
+                  background: AppPalette.greenContainer,
+                  icon: Icons.check_rounded,
+                ),
+              ),
+            ),
           if (expense.notes.isNotEmpty ||
               expense.location != null ||
               expense.attachmentCount > 0)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    if (expense.location != null)
-                      Chip(
-                        avatar: const Icon(Icons.place_outlined, size: 17),
-                        label: Text(expense.location!.label),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (expense.location != null)
+                    ExpenseLocationAction(
+                      location: expense.location!,
+                      openLocation: onOpenLocation,
+                    ),
+                  if (expense.location != null &&
+                      (expense.attachmentCount > 0 || expense.notes.isNotEmpty))
+                    const SizedBox(height: AppSpacing.sm),
+                  if (expense.attachmentCount > 0 || expense.notes.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          if (expense.attachmentCount > 0)
+                            ActionChip(
+                              onPressed: onOpenProof,
+                              avatar: const Icon(
+                                Icons.attach_file_rounded,
+                                size: 17,
+                              ),
+                              label: Text(
+                                '${expense.attachmentCount} '
+                                '${expense.attachmentCount == 1 ? 'proof' : 'proofs'}',
+                              ),
+                            ),
+                          if (expense.notes.isNotEmpty)
+                            Chip(
+                              avatar: const Icon(
+                                Icons.notes_outlined,
+                                size: 17,
+                              ),
+                              label: Text(
+                                expense.notes,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
                       ),
-                    if (expense.attachmentCount > 0)
-                      ActionChip(
-                        onPressed: onOpenProof,
-                        avatar: const Icon(Icons.attach_file_rounded, size: 17),
-                        label: Text(
-                          '${expense.attachmentCount} '
-                          '${expense.attachmentCount == 1 ? 'proof' : 'proofs'}',
-                        ),
-                      ),
-                    if (expense.notes.isNotEmpty)
-                      Chip(
-                        avatar: const Icon(Icons.notes_outlined, size: 17),
-                        label: Text(
-                          expense.notes,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
           if (chargeParts.isNotEmpty)
@@ -1088,29 +1198,12 @@ class _EmptyExpenseState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 54),
-      child: Column(
-        children: [
-          Icon(
-            hasFriends ? Icons.receipt_long_outlined : Icons.group_add_outlined,
-            size: 52,
-            color: AppPalette.blue,
-          ),
-          const SizedBox(height: 14),
-          Text(
-            hasFriends ? 'No expenses yet' : 'Add friends first',
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            hasFriends
-                ? 'Tap Add expense to record the first one.'
-                : 'Use Manage friends before recording an expense.',
-            style: const TextStyle(color: AppPalette.secondaryLabel),
-          ),
-        ],
-      ),
+    return AppEmptyState(
+      icon: hasFriends ? Icons.receipt_long_outlined : Icons.group_add_outlined,
+      title: hasFriends ? 'No expenses yet' : 'Add friends first',
+      message: hasFriends
+          ? 'Tap Add expense to record the first one.'
+          : 'Use Manage friends before recording an expense.',
     );
   }
 }
@@ -1398,6 +1491,1024 @@ class _PendingProof {
   bool get isNew => localFile != null;
 }
 
+String _formatProofSize(int sizeBytes) {
+  if (sizeBytes < 1024) return '$sizeBytes B';
+  final kilobytes = sizeBytes / 1024;
+  if (kilobytes < 1024) return '${kilobytes.ceil()} KB';
+  return '${(kilobytes / 1024).toStringAsFixed(1)} MB';
+}
+
+class _ProofViewerItem {
+  final String filename;
+  final int sizeBytes;
+  final String? localPath;
+  final String? remoteUrl;
+  final bool scanReviewed;
+
+  const _ProofViewerItem({
+    required this.filename,
+    required this.sizeBytes,
+    required this.scanReviewed,
+    this.localPath,
+    this.remoteUrl,
+  });
+}
+
+class _ProofThumbnailCard extends StatelessWidget {
+  final int index;
+  final int totalCount;
+  final _PendingProof proof;
+  final VoidCallback onView;
+  final ValueChanged<String> onAction;
+
+  const _ProofThumbnailCard({
+    required this.index,
+    required this.totalCount,
+    required this.proof,
+    required this.onView,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'View proof ${index + 1} of $totalCount, ${proof.filename}',
+      child: SizedBox(
+        width: 142,
+        child: Material(
+          color: AppPalette.surfaceElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.medium),
+            side: const BorderSide(color: AppPalette.separator),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onView,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (proof.localFile == null)
+                        const _ProofPlaceholder()
+                      else
+                        Image.file(
+                          File(proof.localFile!.path),
+                          fit: BoxFit.cover,
+                          cacheWidth: 420,
+                          errorBuilder: (_, _, _) =>
+                              const _ProofPlaceholder(hasError: true),
+                        ),
+                      Positioned(
+                        top: AppSpacing.xs,
+                        left: AppSpacing.xs,
+                        child: _ProofNumberBadge(number: index + 1),
+                      ),
+                      if (proof.extraction != null)
+                        Positioned(
+                          top: AppSpacing.xs,
+                          right: AppSpacing.xs,
+                          child: Semantics(
+                            label: 'Receipt scan reviewed',
+                            child: const DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: AppPalette.greenContainer,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.all(5),
+                                child: Icon(
+                                  Icons.document_scanner_outlined,
+                                  color: AppPalette.green,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 54,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: AppSpacing.sm),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                proof.filename,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _formatProofSize(proof.sizeBytes),
+                                style: const TextStyle(
+                                  color: AppPalette.secondaryLabel,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuButton<String>(
+                          tooltip: 'Actions for proof ${index + 1}',
+                          icon: const Icon(Icons.more_vert_rounded, size: 20),
+                          onSelected: onAction,
+                          itemBuilder: (_) => [
+                            if (proof.isNew)
+                              const PopupMenuItem(
+                                value: 'scan',
+                                child: _ProofMenuLabel(
+                                  icon: Icons.document_scanner_outlined,
+                                  label: 'Scan receipt',
+                                ),
+                              ),
+                            if (index > 0)
+                              const PopupMenuItem(
+                                value: 'up',
+                                child: _ProofMenuLabel(
+                                  icon: Icons.arrow_back_rounded,
+                                  label: 'Move earlier',
+                                ),
+                              ),
+                            if (index < totalCount - 1)
+                              const PopupMenuItem(
+                                value: 'down',
+                                child: _ProofMenuLabel(
+                                  icon: Icons.arrow_forward_rounded,
+                                  label: 'Move later',
+                                ),
+                              ),
+                            const PopupMenuItem(
+                              value: 'remove',
+                              child: _ProofMenuLabel(
+                                icon: Icons.delete_outline_rounded,
+                                label: 'Remove',
+                                color: AppPalette.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProofMenuLabel extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  const _ProofMenuLabel({required this.icon, required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: AppSpacing.sm),
+        Text(label, style: TextStyle(color: color)),
+      ],
+    );
+  }
+}
+
+class _ProofNumberBadge extends StatelessWidget {
+  final int number;
+
+  const _ProofNumberBadge({required this.number});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppPalette.background.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          '$number',
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProofPlaceholder extends StatelessWidget {
+  final bool hasError;
+
+  const _ProofPlaceholder({this.hasError = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppPalette.surfaceMuted,
+      child: Center(
+        child: Icon(
+          hasError ? Icons.broken_image_outlined : Icons.image_outlined,
+          color: AppPalette.secondaryLabel,
+          size: 32,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProofViewer extends StatefulWidget {
+  final String expenseTitle;
+  final List<_ProofViewerItem> items;
+  final int initialIndex;
+
+  const _ProofViewer({
+    required this.expenseTitle,
+    required this.items,
+    this.initialIndex = 0,
+  });
+
+  @override
+  State<_ProofViewer> createState() => _ProofViewerState();
+}
+
+class _ProofViewerState extends State<_ProofViewer> {
+  late final PageController _pageController;
+  final _thumbnailController = ScrollController();
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex
+        .clamp(0, widget.items.length - 1)
+        .toInt();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _thumbnailController.dispose();
+    super.dispose();
+  }
+
+  void _selectPage(int index) {
+    _pageController.animateToPage(
+      index,
+      duration: AppMotion.standard,
+      curve: AppMotion.curve,
+    );
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _currentIndex = index);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_thumbnailController.hasClients) return;
+      final target = (index * 68.0 - 96).clamp(
+        0.0,
+        _thumbnailController.position.maxScrollExtent,
+      );
+      _thumbnailController.animateTo(
+        target,
+        duration: AppMotion.standard,
+        curve: AppMotion.curve,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.items[_currentIndex];
+    return Scaffold(
+      backgroundColor: AppPalette.background,
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Close proof viewer',
+          icon: const Icon(Icons.close_rounded),
+        ),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Proof ${_currentIndex + 1} of ${widget.items.length}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              widget.expenseTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppPalette.secondaryLabel,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.items.length,
+                onPageChanged: _onPageChanged,
+                itemBuilder: (context, index) => _ZoomableProofPage(
+                  key: ValueKey('${widget.items[index].filename}-$index'),
+                  item: widget.items[index],
+                ),
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              decoration: const BoxDecoration(
+                color: AppPalette.surface,
+                border: Border(top: BorderSide(color: AppPalette.separator)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.filename,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_formatProofSize(item.sizeBytes)} · '
+                              'Pinch or double-tap to zoom',
+                              style: const TextStyle(
+                                color: AppPalette.secondaryLabel,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (item.scanReviewed) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        const AppStatusPill(
+                          label: 'Scanned',
+                          foreground: AppPalette.green,
+                          background: AppPalette.greenContainer,
+                          icon: Icons.document_scanner_outlined,
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (widget.items.length > 1) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    SizedBox(
+                      height: 58,
+                      child: ListView.separated(
+                        controller: _thumbnailController,
+                        scrollDirection: Axis.horizontal,
+                        itemCount: widget.items.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(width: AppSpacing.xs),
+                        itemBuilder: (context, index) {
+                          final selected = index == _currentIndex;
+                          return Semantics(
+                            button: true,
+                            selected: selected,
+                            label:
+                                'View proof ${index + 1} of ${widget.items.length}',
+                            child: GestureDetector(
+                              onTap: () => _selectPage(index),
+                              child: AnimatedContainer(
+                                duration: AppMotion.fast,
+                                width: 58,
+                                padding: EdgeInsets.all(selected ? 2 : 0),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.small,
+                                  ),
+                                  border: selected
+                                      ? Border.all(
+                                          color: AppPalette.blue,
+                                          width: 2,
+                                        )
+                                      : Border.all(color: AppPalette.separator),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: _ProofViewerImage(
+                                  item: widget.items[index],
+                                  fit: BoxFit.cover,
+                                  thumbnail: true,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomableProofPage extends StatefulWidget {
+  final _ProofViewerItem item;
+
+  const _ZoomableProofPage({super.key, required this.item});
+
+  @override
+  State<_ZoomableProofPage> createState() => _ZoomableProofPageState();
+}
+
+class _ZoomableProofPageState extends State<_ZoomableProofPage> {
+  final _transformationController = TransformationController();
+  Offset _doubleTapPosition = Offset.zero;
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _handleDoubleTap() {
+    if (_transformationController.value.getMaxScaleOnAxis() > 1.01) {
+      _transformationController.value = Matrix4.identity();
+      return;
+    }
+    const scale = 2.5;
+    final matrix = Matrix4.identity()
+      ..setEntry(0, 0, scale)
+      ..setEntry(1, 1, scale)
+      ..setEntry(0, 3, -_doubleTapPosition.dx * (scale - 1))
+      ..setEntry(1, 3, -_doubleTapPosition.dy * (scale - 1));
+    _transformationController.value = matrix;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      image: true,
+      label: widget.item.filename,
+      child: GestureDetector(
+        onDoubleTapDown: (details) =>
+            _doubleTapPosition = details.localPosition,
+        onDoubleTap: _handleDoubleTap,
+        child: InteractiveViewer(
+          transformationController: _transformationController,
+          minScale: 1,
+          maxScale: 6,
+          child: SizedBox.expand(child: _ProofViewerImage(item: widget.item)),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProofViewerImage extends StatelessWidget {
+  final _ProofViewerItem item;
+  final BoxFit fit;
+  final bool thumbnail;
+
+  const _ProofViewerImage({
+    required this.item,
+    this.fit = BoxFit.contain,
+    this.thumbnail = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget errorBuilder(
+      BuildContext context,
+      Object error,
+      StackTrace? stackTrace,
+    ) {
+      if (thumbnail) return const _ProofPlaceholder(hasError: true);
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.broken_image_outlined,
+                size: 42,
+                color: AppPalette.secondaryLabel,
+              ),
+              SizedBox(height: AppSpacing.sm),
+              Text('Could not load this proof image.'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (item.localPath != null) {
+      return Image.file(
+        File(item.localPath!),
+        fit: fit,
+        cacheWidth: thumbnail ? 180 : null,
+        errorBuilder: errorBuilder,
+      );
+    }
+    if (item.remoteUrl == null) return const _ProofPlaceholder(hasError: true);
+    return Image.network(
+      item.remoteUrl!,
+      fit: fit,
+      cacheWidth: thumbnail ? 180 : null,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        if (thumbnail) return const _ProofPlaceholder();
+        final expected = progress.expectedTotalBytes;
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                value: expected == null
+                    ? null
+                    : progress.cumulativeBytesLoaded / expected,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              const Text(
+                'Loading proof…',
+                style: TextStyle(color: AppPalette.secondaryLabel),
+              ),
+            ],
+          ),
+        );
+      },
+      errorBuilder: errorBuilder,
+    );
+  }
+}
+
+IconData _expenseCategoryIcon(String iconName) => switch (iconName) {
+  'restaurant' => Icons.restaurant_rounded,
+  'shopping_basket' => Icons.shopping_basket_outlined,
+  'directions_car' => Icons.directions_car_outlined,
+  'shopping_bag' => Icons.shopping_bag_outlined,
+  'receipt' => Icons.receipt_long_outlined,
+  'movie' => Icons.movie_outlined,
+  'flight' => Icons.flight_rounded,
+  'health_and_safety' => Icons.health_and_safety_outlined,
+  _ => Icons.category_outlined,
+};
+
+class _CategoryPickerResult {
+  final String? categoryId;
+  final bool createNew;
+
+  const _CategoryPickerResult.selected(this.categoryId) : createNew = false;
+
+  const _CategoryPickerResult.create() : categoryId = null, createNew = true;
+}
+
+class _CategoryPickerField extends StatelessWidget {
+  final ExpenseCategoryRecord? category;
+  final String? errorText;
+  final VoidCallback onTap;
+
+  const _CategoryPickerField({
+    super.key,
+    required this.category,
+    required this.errorText,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = category;
+    final hasError = errorText != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          button: true,
+          label: selected == null
+              ? 'Category. Choose a category.'
+              : 'Category, ${selected.name}. Tap to change.',
+          child: Material(
+            color: AppPalette.surfaceElevated,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.medium),
+              side: BorderSide(
+                color: hasError ? AppPalette.red : Colors.transparent,
+                width: hasError ? 1.2 : 0,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 70),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: selected == null
+                              ? AppPalette.surfaceMuted
+                              : AppPalette.blueContainer,
+                          borderRadius: BorderRadius.circular(AppRadius.small),
+                        ),
+                        child: Icon(
+                          _expenseCategoryIcon(
+                            selected?.iconName ?? 'category',
+                          ),
+                          color: selected == null
+                              ? AppPalette.secondaryLabel
+                              : AppPalette.blue,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Category',
+                              style: TextStyle(
+                                color: hasError
+                                    ? AppPalette.red
+                                    : AppPalette.secondaryLabel,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              selected?.name ?? 'Choose category',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: selected == null
+                                    ? AppPalette.secondaryLabel
+                                    : AppPalette.label,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppPalette.secondaryLabel,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (errorText != null) ...[
+          const SizedBox(height: AppSpacing.xxs),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            child: Text(
+              errorText!,
+              style: const TextStyle(color: AppPalette.red, fontSize: 12),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExpenseCategoryPickerSheet extends StatefulWidget {
+  final List<ExpenseCategoryRecord> categories;
+  final Set<String> frequentCategoryIds;
+  final String? selectedCategoryId;
+
+  const _ExpenseCategoryPickerSheet({
+    required this.categories,
+    required this.frequentCategoryIds,
+    required this.selectedCategoryId,
+  });
+
+  @override
+  State<_ExpenseCategoryPickerSheet> createState() =>
+      _ExpenseCategoryPickerSheetState();
+}
+
+class _ExpenseCategoryPickerSheetState
+    extends State<_ExpenseCategoryPickerSheet> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _select(ExpenseCategoryRecord category) {
+    Navigator.pop(context, _CategoryPickerResult.selected(category.id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedQuery = _query.trim().toLowerCase();
+    final visibleCategories = normalizedQuery.isEmpty
+        ? widget.categories
+        : widget.categories
+              .where(
+                (category) =>
+                    category.name.toLowerCase().contains(normalizedQuery),
+              )
+              .toList();
+    final frequentCategories = normalizedQuery.isEmpty
+        ? widget.categories
+              .where(
+                (category) => widget.frequentCategoryIds.contains(category.id),
+              )
+              .take(3)
+              .toList()
+        : const <ExpenseCategoryRecord>[];
+
+    return FractionallySizedBox(
+      heightFactor: 0.82,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xs,
+                AppSpacing.sm,
+                AppSpacing.sm,
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: AppSectionHeader(
+                      title: 'Choose category',
+                      subtitle: 'Used for organizing and finding expenses.',
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    tooltip: 'Close category picker',
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => setState(() => _query = value),
+                decoration: InputDecoration(
+                  hintText: 'Search categories',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          tooltip: 'Clear category search',
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: CustomScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                slivers: [
+                  if (frequentCategories.isNotEmpty) ...[
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          AppSpacing.lg,
+                          AppSpacing.md,
+                          AppSpacing.lg,
+                          AppSpacing.xs,
+                        ),
+                        child: Text(
+                          'FREQUENTLY USED',
+                          style: TextStyle(
+                            color: AppPalette.secondaryLabel,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.7,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                        ),
+                        child: Row(
+                          children: [
+                            for (final category in frequentCategories)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  right: AppSpacing.xs,
+                                ),
+                                child: ChoiceChip(
+                                  selected:
+                                      category.id == widget.selectedCategoryId,
+                                  onSelected: (_) => _select(category),
+                                  avatar: Icon(
+                                    _expenseCategoryIcon(category.iconName),
+                                    size: 18,
+                                  ),
+                                  label: Text(category.name),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        frequentCategories.isEmpty
+                            ? AppSpacing.md
+                            : AppSpacing.lg,
+                        AppSpacing.lg,
+                        AppSpacing.xs,
+                      ),
+                      child: Text(
+                        normalizedQuery.isEmpty
+                            ? 'ALL CATEGORIES'
+                            : '${visibleCategories.length} '
+                                  '${visibleCategories.length == 1 ? 'RESULT' : 'RESULTS'}',
+                        style: const TextStyle(
+                          color: AppPalette.secondaryLabel,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.7,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (visibleCategories.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(AppSpacing.lg),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.search_off_rounded,
+                                color: AppPalette.secondaryLabel,
+                                size: 36,
+                              ),
+                              SizedBox(height: AppSpacing.sm),
+                              Text('No matching categories'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverList.separated(
+                      itemCount: visibleCategories.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: AppSpacing.xxs),
+                      itemBuilder: (context, index) {
+                        final category = visibleCategories[index];
+                        final selected =
+                            category.id == widget.selectedCategoryId;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          child: Material(
+                            color: selected
+                                ? AppPalette.blueContainer
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.medium,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListTile(
+                              onTap: () => _select(category),
+                              minTileHeight: 56,
+                              leading: Icon(
+                                _expenseCategoryIcon(category.iconName),
+                                color: selected
+                                    ? AppPalette.blue
+                                    : AppPalette.secondaryLabel,
+                              ),
+                              title: Text(
+                                category.name,
+                                style: TextStyle(
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                              trailing: selected
+                                  ? const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: AppPalette.blue,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: AppSpacing.sm),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppPalette.separator)),
+              ),
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(
+                  context,
+                  const _CategoryPickerResult.create(),
+                ),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Create new category'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ExpenseEditorDialog extends StatefulWidget {
   final String groupId;
   final JpayRepository repository;
@@ -1438,9 +2549,19 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
   List<String?> _usedCategoryIds = const [];
   bool _loadingMetadata = true;
   bool _optionalDetailsExpanded = false;
+  bool _proofsExpanded = false;
   bool _chargesExpanded = false;
   bool _saving = false;
+  bool _discardApproved = false;
   int _newRowSequence = 0;
+  String _initialDraftSignature = '';
+  String? _titleError;
+  String? _categoryError;
+  String? _participantsError;
+  final Map<String, String> _amountErrors = {};
+  final _scrollController = ScrollController();
+  final _essentialsKey = GlobalKey();
+  final _participantsKey = GlobalKey();
 
   @override
   void initState() {
@@ -1527,11 +2648,16 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
         _initialProofPaths.addAll(
           attachments.map((attachment) => attachment.storagePath),
         );
+        _proofsExpanded = attachments.isNotEmpty;
         _loadingMetadata = false;
+        _initialDraftSignature = _draftSignature();
       });
     } catch (error) {
       if (mounted) {
-        setState(() => _loadingMetadata = false);
+        setState(() {
+          _loadingMetadata = false;
+          _initialDraftSignature = _draftSignature();
+        });
         _message(
           networkAwareErrorMessage(error, action: 'load expense details'),
         );
@@ -1562,6 +2688,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _titleController.dispose();
     _merchantController.dispose();
     _notesController.dispose();
@@ -1572,6 +2699,34 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
     }
     super.dispose();
   }
+
+  String _draftSignature() {
+    final location = _location;
+    return [
+      _titleController.text.trim(),
+      _merchantController.text.trim(),
+      _notesController.text.trim(),
+      _taxController.text.trim(),
+      _serviceController.text.trim(),
+      _categoryId ?? '',
+      _expenseDate.toIso8601String(),
+      _receiptTotal?.toString() ?? '',
+      if (location != null)
+        '${location.label}|${location.latitude}|${location.longitude}',
+      ..._proofs.map(
+        (proof) =>
+            '${proof.id}|${proof.storagePath}|${proof.extraction?.rawText}',
+      ),
+      ..._rows.map(
+        (row) =>
+            '${row.key}|${row.friend.id}|${row.amountController.text.trim()}|'
+            '${row.noteController.text.trim()}|${row.paid}',
+      ),
+    ].join('¦');
+  }
+
+  bool get _isDirty =>
+      !_loadingMetadata && _draftSignature() != _initialDraftSignature;
 
   Set<String> get _selectedFriendIds =>
       _rows.map((row) => row.friend.id).toSet();
@@ -1751,6 +2906,7 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
         .where((row) => !result.contains(row.friend.id))
         .toList();
     setState(() {
+      _participantsError = null;
       _rows.removeWhere((row) => !result.contains(row.friend.id));
       final existing = _selectedFriendIds;
       for (final friend in widget.friends) {
@@ -1825,12 +2981,14 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       _message('An expense can have at most five proof images.');
       return;
     }
-    final picked = source == ImageSource.camera
+    final remainingSlots = 5 - _proofs.length;
+    final useSinglePicker = source == ImageSource.camera || remainingSlots == 1;
+    final picked = useSinglePicker
         ? [if (await _picker.pickImage(source: source) case final file?) file]
-        : await _picker.pickMultiImage(limit: 5 - _proofs.length);
+        : await _picker.pickMultiImage(limit: remainingSlots);
     if (!mounted || picked.isEmpty) return;
     final accepted = <_PendingProof>[];
-    for (final file in picked.take(5 - _proofs.length)) {
+    for (final file in picked.take(remainingSlots)) {
       final length = await file.length();
       final extension = file.name.split('.').last.toLowerCase();
       final mimeType = switch (extension) {
@@ -1857,7 +3015,124 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
         ),
       );
     }
-    if (accepted.isNotEmpty) setState(() => _proofs.addAll(accepted));
+    if (accepted.isNotEmpty) {
+      setState(() {
+        _proofs.addAll(accepted);
+        _proofsExpanded = true;
+      });
+    }
+  }
+
+  Future<void> _openProofPreview(int initialIndex) async {
+    FocusScope.of(context).unfocus();
+    try {
+      final items = await Future.wait(
+        _proofs.map((proof) async {
+          String? remoteUrl;
+          if (proof.localFile == null && proof.storagePath != null) {
+            remoteUrl = await widget.repository.createExpenseProofUrl(
+              proof.storagePath!,
+            );
+          }
+          return _ProofViewerItem(
+            filename: proof.filename,
+            sizeBytes: proof.sizeBytes,
+            localPath: proof.localFile?.path,
+            remoteUrl: remoteUrl,
+            scanReviewed: proof.extraction != null,
+          );
+        }),
+      );
+      if (!mounted || items.isEmpty) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => Dialog.fullscreen(
+          child: _ProofViewer(
+            expenseTitle: _titleController.text.trim().isEmpty
+                ? 'Expense proof'
+                : _titleController.text.trim(),
+            items: items,
+            initialIndex: initialIndex,
+          ),
+        ),
+      );
+    } catch (error) {
+      _message(networkAwareErrorMessage(error, action: 'open this proof'));
+    }
+  }
+
+  Future<void> _handleProofAction(
+    String action,
+    _PendingProof proof,
+    int index,
+  ) async {
+    if (action == 'scan') {
+      await _scanProof(proof);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      if (action == 'up' && index > 0) {
+        final item = _proofs.removeAt(index);
+        _proofs.insert(index - 1, item);
+      } else if (action == 'down' && index < _proofs.length - 1) {
+        final item = _proofs.removeAt(index);
+        _proofs.insert(index + 1, item);
+      } else if (action == 'remove') {
+        _proofs.removeAt(index);
+      }
+    });
+  }
+
+  Future<void> _scanReceiptShortcut() async {
+    if (_proofs.length >= 5) {
+      _message('An expense can have at most five proof images.');
+      return;
+    }
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.xs,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const AppSectionHeader(
+                title: 'Scan a receipt',
+                subtitle:
+                    'Jpay will attach the image and let you review the detected merchant, date, and total.',
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              FilledButton.tonalIcon(
+                onPressed: () => Navigator.pop(context, ImageSource.camera),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Take a photo'),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context, ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Choose from gallery'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final previousIds = _proofs.map((proof) => proof.id).toSet();
+    await _pickProofs(source);
+    if (!mounted) return;
+    final added = _proofs
+        .where((proof) => !previousIds.contains(proof.id))
+        .firstOrNull;
+    if (added != null) await _scanProof(added);
   }
 
   Future<void> _scanProof(_PendingProof proof) async {
@@ -1912,6 +3187,30 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       initialDate: _expenseDate,
     );
     if (picked != null && mounted) setState(() => _expenseDate = picked);
+  }
+
+  Future<void> _chooseCategory(List<ExpenseCategoryRecord> categories) async {
+    FocusScope.of(context).unfocus();
+    final usedIds = _usedCategoryIds.whereType<String>().toSet();
+    final result = await showModalBottomSheet<_CategoryPickerResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _ExpenseCategoryPickerSheet(
+        categories: categories,
+        frequentCategoryIds: usedIds,
+        selectedCategoryId: _categoryId,
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result.createNew) {
+      await _createCategory(categories);
+      return;
+    }
+    setState(() {
+      _categoryId = result.categoryId;
+      _categoryError = null;
+    });
   }
 
   Future<void> _createCategory(
@@ -2016,18 +3315,38 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
     });
   }
 
+  Future<void> _scrollTo(GlobalKey key) async {
+    final targetContext = key.currentContext;
+    if (targetContext == null) return;
+    await Scrollable.ensureVisible(
+      targetContext,
+      duration: AppMotion.standard,
+      curve: AppMotion.curve,
+      alignment: 0.08,
+    );
+  }
+
   Future<void> _save() async {
     final title = _titleController.text.trim();
+    setState(() {
+      _titleError = null;
+      _categoryError = null;
+      _participantsError = null;
+      _amountErrors.clear();
+    });
     if (title.isEmpty) {
-      _message('Enter what the expense was for.');
-      return;
-    }
-    if (_rows.isEmpty) {
-      _message('Select at least one friend.');
+      setState(() => _titleError = 'Enter what the expense was for.');
+      await _scrollTo(_essentialsKey);
       return;
     }
     if (_categoryId == null) {
-      _message('Choose an expense category.');
+      setState(() => _categoryError = 'Choose an expense category.');
+      await _scrollTo(_essentialsKey);
+      return;
+    }
+    if (_rows.isEmpty) {
+      setState(() => _participantsError = 'Select at least one friend.');
+      await _scrollTo(_participantsKey);
       return;
     }
 
@@ -2036,11 +3355,18 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
       final amountText = row.amountController.text.trim();
       final amount = double.tryParse(amountText);
       if (amountText.isEmpty) {
-        _message('Enter an amount for ${row.friend.name}.');
+        setState(() {
+          _amountErrors[row.key] = 'Enter an amount for ${row.friend.name}.';
+        });
+        await _scrollTo(_participantsKey);
         return;
       }
       if (amount == null || !amount.isFinite || amount <= 0) {
-        _message('Enter a positive amount for ${row.friend.name}.');
+        setState(() {
+          _amountErrors[row.key] =
+              'Enter a positive amount for ${row.friend.name}.';
+        });
+        await _scrollTo(_participantsKey);
         return;
       }
       drafts.add(
@@ -2133,7 +3459,10 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
           // cleaned during later authenticated maintenance.
         }
       }
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        _discardApproved = true;
+        Navigator.pop(context);
+      }
     } catch (error) {
       try {
         await widget.repository.deleteExpenseProofs(uploadedPaths);
@@ -2160,8 +3489,639 @@ class _ExpenseEditorDialogState extends State<_ExpenseEditorDialog> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _confirmDiscard() async {
+    if (_saving) return;
+    if (!_isDirty) {
+      setState(() => _discardApproved = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.pop(context);
+      });
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.edit_note_rounded, color: AppPalette.orange),
+        title: const Text('Discard this expense?'),
+        content: const Text(
+          'Your unsaved details, amounts, and proof changes will be lost.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppPalette.red),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) return;
+    setState(() => _discardApproved = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.pop(context);
+    });
+  }
+
+  Widget _buildScanShortcut() {
+    return AppSectionCard(
+      color: AppPalette.blueContainer,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AppSectionHeader(
+            title: 'Have a receipt?',
+            subtitle:
+                'Scan it to prefill the merchant, date, and receipt total.',
+          ),
+          const SizedBox(height: AppSpacing.md),
+          FilledButton.tonalIcon(
+            onPressed: _saving ? null : _scanReceiptShortcut,
+            icon: const Icon(Icons.document_scanner_outlined),
+            label: const Text('Scan receipt'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEssentialsSection() {
+    return AppSectionCard(
+      key: _essentialsKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AppSectionHeader(
+            title: 'Expense details',
+            subtitle: 'Start with the essentials.',
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _titleController,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.next,
+            onChanged: (_) {
+              if (_titleError != null) setState(() => _titleError = null);
+            },
+            decoration: InputDecoration(
+              labelText: 'What was it for?',
+              hintText: 'Dinner, groceries, tickets…',
+              errorText: _titleError,
+              prefixIcon: const Icon(Icons.edit_note_outlined),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          StreamBuilder<List<ExpenseCategoryRecord>>(
+            stream: widget.repository.watchExpenseCategories(),
+            builder: (context, snapshot) {
+              final categoriesById = <String, ExpenseCategoryRecord>{};
+              for (final category
+                  in snapshot.data ?? const <ExpenseCategoryRecord>[]) {
+                categoriesById[category.id] = category;
+              }
+              categoriesById.addAll(_locallyCreatedCategories);
+              final categories = orderExpenseCategoriesByUsage(
+                categoriesById.values,
+                _usedCategoryIds,
+              );
+              return _CategoryPickerField(
+                key: const ValueKey('expense-category-picker'),
+                category: categoriesById[_categoryId],
+                errorText: _categoryError,
+                onTap: () => _chooseCategory(categories),
+              );
+            },
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          OutlinedButton.icon(
+            onPressed: _chooseDate,
+            icon: const Icon(Icons.calendar_today_outlined),
+            label: Text(
+              '${_expenseDate.day}/${_expenseDate.month}/${_expenseDate.year}',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipantsSection() {
+    return AppSectionCard(
+      key: _participantsKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppSectionHeader(
+            title: 'Who owes you?',
+            subtitle:
+                'Choose people, then enter custom amounts or split explicitly.',
+            trailing: FilledButton.tonalIcon(
+              onPressed: _selectFriends,
+              icon: const Icon(Icons.group_add_outlined, size: 18),
+              label: Text(_rows.isEmpty ? 'Select' : 'Change'),
+            ),
+          ),
+          if (_participantsError != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _participantsError!,
+                style: const TextStyle(color: AppPalette.red, fontSize: 13),
+              ),
+            ),
+          ],
+          if (_rows.isEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppPalette.surfaceElevated,
+                borderRadius: BorderRadius.circular(AppRadius.medium),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.group_outlined, color: AppPalette.secondaryLabel),
+                  SizedBox(height: AppSpacing.xs),
+                  Text('No participants selected'),
+                ],
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_selectedFriendIds.length} selected',
+                    style: const TextStyle(
+                      color: AppPalette.secondaryLabel,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _splitEqually,
+                  icon: const Icon(Icons.balance_outlined, size: 18),
+                  label: const Text('Split equally'),
+                ),
+              ],
+            ),
+            ..._rows.map(
+              (row) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: _ParticipantCard(
+                  row: row,
+                  errorText: _amountErrors[row.key],
+                  onChanged: () => setState(() {
+                    _amountErrors.remove(row.key);
+                  }),
+                  onRemove: () => _removeRow(row),
+                  onToggleNote: () =>
+                      setState(() => row.noteExpanded = !row.noteExpanded),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProofSection() {
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            onTap: () => setState(() => _proofsExpanded = !_proofsExpanded),
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: const Text(
+              'Receipt & proof',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              _proofs.isEmpty
+                  ? 'Optional · Add up to five images'
+                  : '${_proofs.length}/5 attached · Tap to view',
+            ),
+            trailing: Icon(
+              _proofsExpanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+            ),
+          ),
+          if (_proofsExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                0,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _proofs.length >= 5
+                              ? null
+                              : () => _pickProofs(ImageSource.camera),
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          label: const Text('Camera'),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _proofs.length >= 5
+                              ? null
+                              : () => _pickProofs(ImageSource.gallery),
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Gallery'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_proofs.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    SizedBox(
+                      height: 164,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _proofs.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(width: AppSpacing.sm),
+                        itemBuilder: (context, index) {
+                          final proof = _proofs[index];
+                          return _ProofThumbnailCard(
+                            index: index,
+                            totalCount: _proofs.length,
+                            proof: proof,
+                            onView: () => _openProofPreview(index),
+                            onAction: (action) => unawaited(
+                              _handleProofAction(action, proof, index),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  if (_receiptTotal != null)
+                    Card(
+                      color: AppPalette.blueContainer,
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.receipt_long_outlined,
+                          color: AppPalette.blue,
+                        ),
+                        title: Text(
+                          'Receipt total · RM ${_receiptTotal!.toStringAsFixed(2)}',
+                        ),
+                        subtitle: const Text(
+                          'Split it only when you are ready to replace custom amounts.',
+                        ),
+                        trailing: TextButton(
+                          onPressed: _splitReceiptTotal,
+                          child: const Text('Split'),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOptionalDetailsSection() {
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            onTap: () => setState(
+              () => _optionalDetailsExpanded = !_optionalDetailsExpanded,
+            ),
+            leading: const Icon(Icons.info_outline_rounded),
+            title: const Text(
+              'Merchant & notes',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(_optionalDetailsSummary),
+            trailing: Icon(
+              _optionalDetailsExpanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+            ),
+          ),
+          if (_optionalDetailsExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                0,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _merchantController,
+                    textCapitalization: TextCapitalization.words,
+                    maxLength: 120,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Merchant (optional)',
+                      counterText: '',
+                      prefixIcon: Icon(Icons.storefront_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextField(
+                    controller: _notesController,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: 2000,
+                    onChanged: (_) => setState(() {}),
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Expense notes (optional)',
+                      counterText: '',
+                      alignLabelWithHint: true,
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  OutlinedButton.icon(
+                    onPressed: _chooseLocation,
+                    icon: const Icon(Icons.place_outlined),
+                    label: Text(
+                      _location?.label ?? 'Add location',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (_location != null)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(_location!.label),
+                      subtitle: Text(
+                        _location!.address,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        onPressed: () => setState(() => _location = null),
+                        tooltip: 'Remove location',
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChargesSection() {
+    final total = _subtotal + _tax + _service;
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            onTap: () => setState(() => _chargesExpanded = !_chargesExpanded),
+            leading: const Icon(Icons.percent_outlined),
+            title: const Text(
+              'Tax & service',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              _tax == 0 && _service == 0
+                  ? 'Optional'
+                  : 'RM ${(_tax + _service).toStringAsFixed(2)} added',
+            ),
+            trailing: Icon(
+              _chargesExpanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+            ),
+          ),
+          if (_chargesExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                0,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _taxController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Tax',
+                            suffixText: '%',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: TextField(
+                          controller: _serviceController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Service',
+                            suffixText: '%',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: AppPalette.blueContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.medium),
+                    ),
+                    child: Column(
+                      children: [
+                        _SummaryLine(label: 'Subtotal', value: _subtotal),
+                        if (_tax != 0) _SummaryLine(label: 'Tax', value: _tax),
+                        if (_service != 0)
+                          _SummaryLine(label: 'Service', value: _service),
+                        const Divider(height: AppSpacing.md),
+                        _SummaryLine(
+                          label: 'Total owed',
+                          value: total,
+                          bold: true,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSaveBar(double total) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppPalette.surface,
+        border: Border(top: BorderSide(color: AppPalette.separator)),
+      ),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
+        child: Builder(
+          builder: (context) {
+            final totalLabel = Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'TOTAL OWED',
+                  style: TextStyle(
+                    color: AppPalette.secondaryLabel,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+                Text(
+                  'RM ${total.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 19,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ],
+            );
+            final saveButton = FilledButton(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(minimumSize: const Size(160, 52)),
+              child: _saving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    )
+                  : Text(widget.isEditing ? 'Save changes' : 'Add expense'),
+            );
+            if (MediaQuery.sizeOf(context).width < 340) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  totalLabel,
+                  const SizedBox(height: AppSpacing.xs),
+                  saveButton,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: totalLabel),
+                const SizedBox(width: AppSpacing.md),
+                Flexible(child: saveButton),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final total = _subtotal + _tax + _service;
+    return PopScope(
+      canPop: _discardApproved || (!_isDirty && !_saving),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmDiscard();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            onPressed: _saving ? null : _confirmDiscard,
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          title: Text(widget.isEditing ? 'Edit expense' : 'Add expense'),
+        ),
+        body: _loadingMetadata
+            ? const AppLoadingList(itemCount: 4)
+            : SafeArea(
+                bottom: false,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md,
+                        AppSpacing.sm,
+                        AppSpacing.md,
+                        AppSpacing.xl,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildScanShortcut(),
+                          const SizedBox(height: AppSpacing.md),
+                          _buildEssentialsSection(),
+                          const SizedBox(height: AppSpacing.md),
+                          _buildParticipantsSection(),
+                          const SizedBox(height: AppSpacing.md),
+                          _buildProofSection(),
+                          const SizedBox(height: AppSpacing.sm),
+                          _buildOptionalDetailsSection(),
+                          const SizedBox(height: AppSpacing.sm),
+                          _buildChargesSection(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+        bottomNavigationBar: _loadingMetadata ? null : _buildSaveBar(total),
+      ),
+    );
+  }
+
+  // Retained temporarily as a rollback reference during the UI refresh.
+  // ignore: unused_element
+  Widget _buildLegacyEditor(BuildContext context) {
     final total = _subtotal + _tax + _service;
     return Scaffold(
       appBar: AppBar(
@@ -3000,12 +4960,14 @@ class _ParticipantCard extends StatelessWidget {
   final VoidCallback onChanged;
   final VoidCallback onRemove;
   final VoidCallback onToggleNote;
+  final String? errorText;
 
   const _ParticipantCard({
     required this.row,
     required this.onChanged,
     required this.onRemove,
     required this.onToggleNote,
+    this.errorText,
   });
 
   @override
@@ -3056,9 +5018,10 @@ class _ParticipantCard extends StatelessWidget {
             controller: row.amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => onChanged(),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Amount owed (RM)',
               hintText: '0.00',
+              errorText: errorText,
             ),
           ),
           if (row.noteExpanded) ...[
@@ -3130,11 +5093,6 @@ class _LoadError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Text(message, textAlign: TextAlign.center),
-      ),
-    );
+    return AppErrorState(message: message);
   }
 }

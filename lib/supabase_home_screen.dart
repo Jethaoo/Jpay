@@ -9,6 +9,7 @@ import 'backend/supabase_jpay_repository.dart';
 import 'network_status.dart';
 import 'supabase_group_details_screen.dart';
 import 'supabase_profile_screen.dart';
+import 'widgets/app_ui.dart';
 import 'widgets/group_name_dialog.dart';
 
 class SupabaseHomeScreen extends StatefulWidget {
@@ -152,20 +153,6 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
     );
   }
 
-  void _openGroupManager() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _ManageGroupsScreen(
-          repository: _repository,
-          onOpen: _openGroup,
-          onRename: _renameGroup,
-          onDelete: _deleteGroup,
-        ),
-      ),
-    );
-  }
-
   void _showError(Object error, String action) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -185,41 +172,54 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          monthYear,
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-            letterSpacing: -0.3,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.grid_view_rounded),
-          tooltip: 'Manage groups',
-          onPressed: _openGroupManager,
+        titleSpacing: AppSpacing.md,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Jpay',
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w800,
+                fontSize: 22,
+                letterSpacing: -0.5,
+              ),
+            ),
+            Text(
+              monthYear,
+              style: const TextStyle(
+                color: AppPalette.secondaryLabel,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.7,
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
             tooltip: 'Profile',
             onPressed: _openProfile,
-            icon: CircleAvatar(
-              radius: 18,
-              backgroundColor: AppPalette.surfaceElevated,
-              foregroundImage: profilePhotoUrl == null
-                  ? null
-                  : NetworkImage(profilePhotoUrl),
-              onForegroundImageError: profilePhotoUrl == null
-                  ? null
-                  : (_, _) {
-                      if (mounted && _profilePhotoUrl == profilePhotoUrl) {
-                        setState(() => _profilePhotoUrl = null);
-                      }
-                    },
-              child: Text(
-                email.isEmpty ? 'J' : email[0].toUpperCase(),
-                style: const TextStyle(
-                  color: AppPalette.blue,
-                  fontWeight: FontWeight.w700,
+            icon: Semantics(
+              label: 'Open profile',
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: AppPalette.surfaceElevated,
+                foregroundImage: profilePhotoUrl == null
+                    ? null
+                    : NetworkImage(profilePhotoUrl),
+                onForegroundImageError: profilePhotoUrl == null
+                    ? null
+                    : (_, _) {
+                        if (mounted && _profilePhotoUrl == profilePhotoUrl) {
+                          setState(() => _profilePhotoUrl = null);
+                        }
+                      },
+                child: Text(
+                  email.isEmpty ? 'J' : email[0].toUpperCase(),
+                  style: const TextStyle(
+                    color: AppPalette.blue,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
@@ -236,7 +236,7 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
         stream: _repository.watchGroups(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return _ErrorState(
+            return AppErrorState(
               message: networkAwareErrorMessage(
                 snapshot.error!,
                 action: 'load your groups',
@@ -244,7 +244,7 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
             );
           }
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppLoadingList(itemCount: 4);
           }
 
           final serverGroups = snapshot.data!;
@@ -281,10 +281,10 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
                 children: [
                   Expanded(
                     child: _SummaryCard(
-                      title: 'Total Owed',
+                      title: 'Outstanding to you',
                       value: 'RM ${totalOwed.toStringAsFixed(2)}',
-                      icon: Icons.arrow_downward_rounded,
-                      color: AppPalette.red,
+                      icon: Icons.account_balance_wallet_outlined,
+                      color: AppPalette.orange,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -324,7 +324,7 @@ class _SupabaseHomeScreenState extends State<SupabaseHomeScreen> {
               ),
               const SizedBox(height: 12),
               if (groups.isEmpty)
-                const _EmptyGroupsState(searching: false)
+                _EmptyGroupsState(searching: false, onCreate: _createGroup)
               else if (visible.isEmpty)
                 const _EmptyGroupsState(searching: true)
               else
@@ -381,12 +381,8 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppPalette.separator),
-      ),
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
       child: TextField(
         controller: controller,
         onChanged: onChanged,
@@ -401,10 +397,10 @@ class _SearchField extends StatelessWidget {
                   icon: const Icon(Icons.close_rounded),
                   tooltip: 'Clear search',
                 ),
-          fillColor: AppPalette.surface,
+          fillColor: Colors.transparent,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
           ),
         ),
       ),
@@ -427,13 +423,7 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppPalette.separator),
-      ),
+    return AppSectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -493,12 +483,8 @@ class _GroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppPalette.separator),
-      ),
+    return AppSectionCard(
+      padding: EdgeInsets.zero,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -553,55 +539,46 @@ class _GroupCard extends StatelessWidget {
                                 color: AppPalette.secondaryLabel,
                               ),
                               const SizedBox(width: 4),
-                              Text(
-                                count == null
-                                    ? 'Loading friends…'
-                                    : '$count ${count == 1 ? 'friend' : 'friends'}',
-                                style: const TextStyle(
-                                  color: AppPalette.secondaryLabel,
-                                  fontSize: 13,
+                              Flexible(
+                                child: Text(
+                                  count == null
+                                      ? 'Loading friends…'
+                                      : '$count ${count == 1 ? 'friend' : 'friends'}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppPalette.secondaryLabel,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
                             ],
                           );
                         },
                       ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: group.totalOwed > 0
+                            ? AppStatusPill(
+                                label:
+                                    'RM ${group.totalOwed.toStringAsFixed(2)}',
+                                foreground: AppPalette.orange,
+                                background: AppPalette.orange.withValues(
+                                  alpha: 0.13,
+                                ),
+                                icon: Icons.schedule_rounded,
+                              )
+                            : const AppStatusPill(
+                                label: 'Settled',
+                                foreground: AppPalette.green,
+                                background: AppPalette.greenContainer,
+                                icon: Icons.check_rounded,
+                              ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                if (group.totalOwed > 0)
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 108),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppPalette.redContainer,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'RM ${group.totalOwed.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: AppPalette.red,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  const Text(
-                    'All paid',
-                    style: TextStyle(
-                      color: AppPalette.green,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
                 PopupMenuButton<String>(
                   tooltip: 'Group actions',
                   onSelected: (value) {
@@ -628,156 +605,24 @@ class _GroupCard extends StatelessWidget {
   }
 }
 
-class _ManageGroupsScreen extends StatelessWidget {
-  final JpayRepository repository;
-  final ValueChanged<GroupRecord> onOpen;
-  final ValueChanged<GroupRecord> onRename;
-  final ValueChanged<GroupRecord> onDelete;
-
-  const _ManageGroupsScreen({
-    required this.repository,
-    required this.onOpen,
-    required this.onRename,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Manage Groups')),
-      body: StreamBuilder<List<GroupRecord>>(
-        stream: repository.watchGroups(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return _ErrorState(
-              message: networkAwareErrorMessage(
-                snapshot.error!,
-                action: 'load your groups',
-              ),
-            );
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final groups = snapshot.data!;
-          if (groups.isEmpty) {
-            return const _EmptyGroupsState(searching: false);
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-            itemCount: groups.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final group = groups[index];
-              return Card(
-                child: ListTile(
-                  onTap: () {
-                    Navigator.pop(context);
-                    onOpen(group);
-                  },
-                  contentPadding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-                  leading: CircleAvatar(
-                    backgroundColor: AppPalette.blue,
-                    foregroundColor: Colors.white,
-                    child: Text(
-                      group.name.isEmpty ? '?' : group.name[0].toUpperCase(),
-                    ),
-                  ),
-                  title: Text(
-                    group.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(
-                    group.totalOwed > 0
-                        ? 'RM ${group.totalOwed.toStringAsFixed(2)} owed'
-                        : 'All settled',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        onPressed: () => onRename(group),
-                        icon: const Icon(Icons.edit_outlined),
-                        tooltip: 'Rename group',
-                      ),
-                      IconButton(
-                        onPressed: () => onDelete(group),
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: AppPalette.red,
-                        ),
-                        tooltip: 'Delete group',
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _EmptyGroupsState extends StatelessWidget {
   final bool searching;
+  final VoidCallback? onCreate;
 
-  const _EmptyGroupsState({required this.searching});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 52),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: const BoxDecoration(
-              color: AppPalette.surfaceElevated,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              searching
-                  ? Icons.search_off_outlined
-                  : Icons.account_balance_wallet_outlined,
-              size: 48,
-              color: AppPalette.blue,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            searching ? 'No matching groups' : 'No groups yet',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            searching
-                ? 'Try a different name or clear your search.'
-                : 'Create your first group to start tracking expenses.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppPalette.secondaryLabel),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  final String message;
-
-  const _ErrorState({required this.message});
+  const _EmptyGroupsState({required this.searching, this.onCreate});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Text(message, textAlign: TextAlign.center),
-      ),
+    return AppEmptyState(
+      icon: searching
+          ? Icons.search_off_outlined
+          : Icons.account_balance_wallet_outlined,
+      title: searching ? 'No matching groups' : 'No groups yet',
+      message: searching
+          ? 'Try a different name or clear your search.'
+          : 'Create your first group to start tracking expenses.',
+      actionLabel: searching ? null : 'Create first group',
+      onAction: searching ? null : onCreate,
     );
   }
 }

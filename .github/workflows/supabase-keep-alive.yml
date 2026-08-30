@@ -1,0 +1,43 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Daily at 03:00 UTC (11:00 MYT) - resets the 7-day inactivity timer
+    - cron: "0 3 * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  keep-alive:
+    name: Ping Supabase database
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: https://boggrdklyihmjuojfzxc.supabase.co
+    steps:
+      - name: Send a real database request
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_TABLE: ${{ secrets.SUPABASE_TABLE }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SUPABASE_ANON_KEY}" || -z "${SUPABASE_TABLE}" ]]; then
+            echo "::error::Missing secrets. Add SUPABASE_ANON_KEY and SUPABASE_TABLE in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          code=$(curl -sS -o supabase-ping.json -w "%{http_code}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Accept: application/json" \
+            "${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?select=count")
+
+          echo "Supabase responded with HTTP ${code}"
+          if [[ "${code}" != "200" ]]; then
+            echo "Keep-alive failed:"
+            cat supabase-ping.json
+            exit 1
+          fi

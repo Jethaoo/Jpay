@@ -17,26 +17,26 @@ jobs:
     env:
       SUPABASE_URL: https://boggrdklyihmjuojfzxc.supabase.co
     steps:
-      - name: Send a real database request
+      - name: Call keepalive RPC
         env:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_TABLE: ${{ secrets.SUPABASE_TABLE }}
         run: |
           set -euo pipefail
 
-          if [[ -z "${SUPABASE_ANON_KEY}" || -z "${SUPABASE_TABLE}" ]]; then
-            echo "::error::Missing secrets. Add SUPABASE_ANON_KEY and SUPABASE_TABLE in Settings -> Secrets and variables -> Actions."
+          if [[ -z "${SUPABASE_ANON_KEY}" ]]; then
+            echo "::error::Missing secret. Add SUPABASE_ANON_KEY in Settings -> Secrets and variables -> Actions."
             exit 1
           fi
 
           code=$(curl -sS -o supabase-ping.json -w "%{http_code}" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            -H "Accept: application/json" \
-            "${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?select=count")
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "${SUPABASE_URL}/rest/v1/rpc/keepalive")
 
           echo "Supabase responded with HTTP ${code}"
-          if [[ "${code}" != "200" ]]; then
+          if [[ "${code}" != "200" && "${code}" != "204" ]]; then
             echo "Keep-alive failed:"
             cat supabase-ping.json
             exit 1
